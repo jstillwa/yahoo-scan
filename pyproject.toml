@@ -9,10 +9,10 @@ description = "Single-user Yahoo IMAP inbox triage using Rspamd + LLM (OpenRoute
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.32",
-    "python-dotenv>=1.0",
-    "llm>=0.15",
-    "llm-openrouter>=0.1",
+    "requests>=2.32.5",
+    "python-dotenv>=1.1.1",
+    "llm>=0.27.1",
+    "llm-openrouter>=0.5",
 ]
 
 [project.scripts]
@@ -23,4 +23,4 @@ packages = ["inbox_cleaner"]
 
 [tool.uv]
 # Keep installs reproducible
-exclude-newer = "2025-10-14T00:00:00Z"
+exclude-newer = "2025-10-15T00:00:00Z"
