@@ -4,14 +4,15 @@ services:
     ports:
       - "11333:11333"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11333/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   cleaner:
-    build:
-      context: .
-      cache_from:
-        - type=local,src=/tmp/.buildx-cache
-      cache_to:
-        - type=local,dest=/tmp/.buildx-cache-new,mode=max
+    build: .
     env_file: .env
     environment:
       # Override for Docker networking
