@@ -253,9 +253,62 @@ options:
 
 ## Scheduling
 
+### GitHub Actions (Recommended for Cloud Deployment)
+
+Deploy to run automatically every hour using GitHub Actions (completely free):
+
+**Setup Steps:**
+
+1. **Fork/push this repository to GitHub**
+
+2. **Add repository secrets** (Settings → Secrets and variables → Actions):
+   - `YAHOO_EMAIL` - Your Yahoo email address
+   - `YAHOO_PASSWORD` - Your Yahoo app password
+   - `OPENROUTER_KEY` - Your OpenRouter API key
+
+   **Optional: Customize other settings**
+
+   By default, the workflow uses these settings (defined in `.github/workflows/clean-inbox.yml`):
+   - LLM Model: `openrouter/google/gemini-2.0-flash-exp:free`
+   - Spam score threshold: `6.0`
+   - Trash score threshold: `7.0`
+   - History weight: `0.3`
+   - History min samples: `3`
+
+   To customize these, edit the `.env` file creation section in the workflow file
+
+3. **Enable GitHub Actions** in your repository settings
+
+4. **The workflow runs automatically every hour**
+   - Workflow file: `.github/workflows/clean-inbox.yml`
+   - Runs at minute 0 of every hour
+   - Uses Docker Compose (rspamd + cleaner)
+   - Runs in `--auto` mode (no prompts)
+   - SQLite database persists between runs via GitHub artifacts
+
+**Manual Trigger:**
+
+You can also trigger the workflow manually from the Actions tab:
+- Go to Actions → Clean Yahoo Inbox → Run workflow
+
+**Monitoring:**
+
+View execution logs in the Actions tab to see:
+- How many emails were processed
+- Which actions were taken
+- Any errors or issues
+
+**Notes:**
+- Free tier includes 2,000 minutes/month (plenty for hourly runs)
+- Database state is preserved between runs for 90 days
+- Secrets are encrypted and never exposed in logs
+- All sensitive data stays in repository secrets
+
+### Local Scheduling
+
 Run periodically using your system's scheduler:
 
-### Linux/macOS (cron)
+#### Linux/macOS (cron)
 
 ```bash
 # Run every 15 minutes in auto mode
@@ -265,7 +318,7 @@ Run periodically using your system's scheduler:
 */15 * * * * cd /path/to/inbox-cleaner && /path/to/.venv/bin/inbox-cleaner --auto
 ```
 
-### Windows (Task Scheduler)
+#### Windows (Task Scheduler)
 
 1. Open Task Scheduler
 2. Create Basic Task
@@ -357,6 +410,28 @@ inbox-cleaner/
 - Check you have credits in your OpenRouter account
 - Ensure the LLM_MODEL uses the `openrouter/` prefix (e.g., `openrouter/google/gemini-2.5-flash`)
 - List available models: `llm models list`
+
+### GitHub Actions deployment issues
+
+**Workflow not running:**
+- Check that Actions are enabled in repository Settings → Actions → General
+- Verify the workflow file is at `.github/workflows/clean-inbox.yml`
+- Check the Actions tab for error messages
+
+**Authentication errors:**
+- Verify all three secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`, `OPENROUTER_KEY`
+- Use Yahoo app password, not regular password
+- Secret names must match exactly (case-sensitive)
+
+**Database not persisting:**
+- Check Actions tab → workflow run → Artifacts section
+- Artifact named "inbox-cleaner-state" should be uploaded after each run
+- First run won't have an artifact (this is normal)
+
+**Rspamd container issues:**
+- Check workflow logs for "Rspamd is ready!" message
+- If timeout occurs, rspamd may need more startup time
+- View rspamd logs in the workflow output under "Show logs on failure"
 
 ## License
 

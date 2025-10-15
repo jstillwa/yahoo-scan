@@ -1,0 +1,109 @@
+name: Clean Yahoo Inbox
+
+on:
+  schedule:
+    # Run every hour at minute 0
+    - cron: '0 * * * *'
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  clean-inbox:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download previous database state
+        uses: actions/download-artifact@v4
+        with:
+          name: inbox-cleaner-state
+          path: ./data
+        continue-on-error: true  # First run won't have artifacts
+
+      - name: Create data directory if needed
+        run: mkdir -p ./data
+
+      - name: Create .env file from secrets
+        run: |
+          cat > .env << EOF
+          # Yahoo Mail credentials (required)
+          YAHOO_EMAIL=${{ secrets.YAHOO_EMAIL }}
+          YAHOO_APP_PASSWORD=${{ secrets.YAHOO_PASSWORD }}
+
+          # IMAP settings
+          IMAP_HOST=imap.mail.yahoo.com
+          IMAP_PORT=993
+          MAILBOX=INBOX
+          DEST_FOLDER=Promotional
+          TRASH_FOLDER=Bulk Mail
+
+          # Interactive mode (disabled for GitHub Actions)
+          INTERACTIVE=false
+
+          # SQLite database location (Docker path)
+          SQLITE_PATH=/data/state.sqlite
+
+          # LLM Configuration
+          LLM_MODEL=openrouter/google/gemini-2.0-flash-exp:free
+          LLM_MAX_CHARS=2000000
+          OPENROUTER_KEY=${{ secrets.OPENROUTER_KEY }}
+
+          # Rspamd settings (Docker network)
+          RSPAMD_URL=http://rspamd:11333/checkv2
+          RSPAMD_SPAM_SCORE=6.0
+          RSPAMD_TRASH_SCORE=7.0
+
+          # Historical learning settings
+          HISTORY_WEIGHT=0.3
+          HISTORY_MIN_SAMPLES=3
+          EOF
+
+      - name: Start rspamd container
+        run: |
+          docker compose up -d rspamd
+
+          # Wait for rspamd to be healthy (max 60 seconds)
+          echo "Waiting for rspamd to be ready..."
+          for i in {1..30}; do
+            if docker compose ps rspamd | grep -q "healthy"; then
+              echo "Rspamd is ready!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Rspamd failed to become healthy"
+              docker compose logs rspamd
+              exit 1
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run inbox cleaner in auto mode
+        run: |
+          docker compose run --rm cleaner --auto
+        env:
+          YAHOO_EMAIL: ${{ secrets.YAHOO_EMAIL }}
+          YAHOO_PASSWORD: ${{ secrets.YAHOO_PASSWORD }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          echo "=== Rspamd logs ==="
+          docker compose logs rspamd
+          echo "=== Cleaner logs ==="
+          docker compose logs cleaner
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down
+
+      - name: Upload database state for next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: inbox-cleaner-state
+          path: ./data/state.sqlite
+          retention-days: 90
+          overwrite: true
