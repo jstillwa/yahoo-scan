@@ -3,9 +3,10 @@ import sys
 import llm
 
 LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/google/gemini-2.5-flash")
-# Max tokens to send (Gemini 2.5 Flash supports 1M, but limit to 500k for safety)
-# Approximate 1 token = 4 characters
-MAX_CHARS = int(os.getenv("LLM_MAX_CHARS", "2000000"))  # 500k tokens * 4 chars
+# Max tokens to send (Gemini 2.5 Flash supports 1,048,576 tokens)
+# Observed ratio from production: ~1.4 chars per token for email content
+# Target ~800K tokens to leave headroom for prompt overhead (250K token buffer)
+MAX_CHARS = int(os.getenv("LLM_MAX_CHARS", "1120000"))  # ~800k tokens * 1.4 chars/token
 
 def classify_message(headers_text: str, raw_email: bytes) -> str:
     """
