@@ -53,5 +53,4 @@ data/
 # OS
 .DS_Store
 Thumbs.db
-CLAUDE.md
 .ruff_cache
