@@ -7,8 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install uv (single static binary)
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && ln -s /root/.cargo/bin/uv /usr/local/bin/uv
+    && curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add uv to PATH
+ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /app
 
