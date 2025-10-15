@@ -1,13 +1,15 @@
 import os
 import sys
-from textwrap import shorten
 import llm
 
 LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/google/gemini-2.5-flash")
+# Max tokens to send (Gemini 2.5 Flash supports 1M, but limit to 500k for safety)
+# Approximate 1 token = 4 characters
+MAX_CHARS = int(os.getenv("LLM_MAX_CHARS", "2000000"))  # 500k tokens * 4 chars
 
 def classify_message(headers_text: str, raw_email: bytes) -> str:
     """
-    Ultra-short prompt; keep it cheap and fast
+    Classify email using full content (up to 500K tokens)
     Uses llm package which supports multiple providers
     """
     subject = ""
@@ -15,18 +17,19 @@ def classify_message(headers_text: str, raw_email: bytes) -> str:
         if line.lower().startswith("subject:"):
             subject = line.split(":", 1)[1].strip()
             break
-    snippet = raw_email[:4000].decode("utf-8", errors="replace")
-    snippet = shorten(snippet, width=2000, placeholder="…")
+
+    # Decode full email content (up to MAX_CHARS)
+    full_content = raw_email[:MAX_CHARS].decode("utf-8", errors="replace")
 
     prompt = (
         "You are an email triage classifier. "
         "Return exactly one of: spam, promotional, or normal. "
-        "Rules: newsletters/ads/sales = promotional; phishing/scam/junk = spam; valid personal or work = normal.\n"
+        "Rules: newsletters/ads/sales = promotional; political/phishing/scam/junk = spam; valid personal or work = normal.\n"
         f"Subject: {subject}\n"
         "Headers:\n"
-        f"{headers_text[:1500]}\n"
-        "Body snippet:\n"
-        f"{snippet}\n"
+        f"{headers_text}\n"
+        "Full email body:\n"
+        f"{full_content}\n"
         "Answer with only the single label."
     )
 

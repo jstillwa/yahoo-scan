@@ -143,6 +143,7 @@ All configuration is done via environment variables:
 | `YAHOO_APP_PASSWORD` | (required) | Yahoo app password |
 | `OPENROUTER_KEY` | (required*) | OpenRouter API key (set via `llm keys set openrouter`) |
 | `LLM_MODEL` | `openrouter/google/gemini-2.5-flash` | LLM model to use (any OpenRouter model) |
+| `LLM_MAX_CHARS` | `2000000` | Max characters to send to LLM (~500K tokens, Gemini supports 1M) |
 | `IMAP_HOST` | `imap.mail.yahoo.com` | Yahoo IMAP server |
 | `IMAP_PORT` | `993` | IMAP SSL port |
 | `MAILBOX` | `INBOX` | Mailbox to scan |
