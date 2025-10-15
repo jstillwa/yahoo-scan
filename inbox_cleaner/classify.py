@@ -17,17 +17,17 @@ def _extract_text_content(msg: Message) -> str:
     if msg.is_multipart():
         for part in msg.walk():
             content_type = part.get_content_type()
-            content_disposition = part.get("Content-Disposition", "")
+            content_disposition = str(part.get("Content-Disposition", ""))
 
             # Skip attachments (identified by Content-Disposition: attachment)
-            if "attachment" in content_disposition:
+            if "attachment" in content_disposition.lower():
                 continue
 
             # Only extract text/plain and text/html parts
             if content_type in ("text/plain", "text/html"):
                 try:
                     payload = part.get_payload(decode=True)
-                    if payload:
+                    if isinstance(payload, bytes):
                         charset = part.get_content_charset() or "utf-8"
                         text_parts.append(payload.decode(charset, errors="replace"))
                 except Exception:
@@ -36,7 +36,7 @@ def _extract_text_content(msg: Message) -> str:
         # Non-multipart message - just get the payload
         try:
             payload = msg.get_payload(decode=True)
-            if payload:
+            if isinstance(payload, bytes):
                 charset = msg.get_content_charset() or "utf-8"
                 text_parts.append(payload.decode(charset, errors="replace"))
         except Exception:
