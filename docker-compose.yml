@@ -1,0 +1,20 @@
+version: "3.9"
+services:
+  rspamd:
+    image: rspamd/rspamd:latest
+    ports:
+      - "11333:11333"
+    restart: unless-stopped
+
+  cleaner:
+    build: .
+    env_file: .env
+    environment:
+      # Override for Docker networking
+      RSPAMD_URL: http://rspamd:11333/checkv2
+      SQLITE_PATH: /data/state.sqlite
+    volumes:
+      - ./data:/data
+    depends_on:
+      - rspamd
+    restart: "no"

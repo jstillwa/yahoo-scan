@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inbox-cleaner"
+version = "0.1.0"
+description = "Single-user Yahoo IMAP inbox triage using Rspamd + LLM (OpenRouter)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+    "llm>=0.15",
+    "llm-openrouter>=0.1",
+]
+
+[project.scripts]
+inbox-cleaner = "inbox_cleaner.cli:main"
+
+[tool.setuptools]
+packages = ["inbox_cleaner"]
+
+[tool.uv]
+# Keep installs reproducible
+exclude-newer = "2025-10-14T00:00:00Z"
