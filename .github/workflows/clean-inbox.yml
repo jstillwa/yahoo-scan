@@ -81,7 +81,7 @@ jobs:
 
       - name: Run inbox cleaner in auto mode
         run: |
-          docker compose run --rm cleaner --auto
+          docker compose run --rm cleaner inbox-cleaner --auto
         env:
           YAHOO_EMAIL: ${{ secrets.YAHOO_EMAIL }}
           YAHOO_PASSWORD: ${{ secrets.YAHOO_PASSWORD }}
