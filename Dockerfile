@@ -1,5 +1,5 @@
 # Slim, reproducible Python with uv as the sole builder/installer
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
