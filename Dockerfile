@@ -1,28 +1,32 @@
-# Slim, reproducible Python with uv as the sole builder/installer
-FROM python:3.14-slim
+# Multi-stage build with official uv image
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install uv (single static binary)
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh
+WORKDIR /app
 
-# Add uv to PATH
-ENV PATH="/root/.local/bin:${PATH}"
+# Install dependencies first (better caching)
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
+
+# Copy source and install project
+COPY . /app
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# Final slim runtime image
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Only copy manifests first for better caching
-COPY pyproject.toml /app/
+# Copy virtual environment from builder
+COPY --from=builder /app/.venv /app/.venv
 
-# Create a dedicated, deterministic venv and sync deps
-RUN uv venv /app/.venv && . /app/.venv/bin/activate && uv sync --no-dev --frozen
+# Set PATH to use venv
 ENV PATH="/app/.venv/bin:${PATH}"
-
-# Now copy the code
-COPY inbox_cleaner /app/inbox_cleaner
 
 # Data dir for sqlite state
 VOLUME ["/data"]
