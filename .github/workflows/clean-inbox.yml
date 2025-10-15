@@ -45,7 +45,7 @@ jobs:
           SQLITE_PATH=/data/state.sqlite
 
           # LLM Configuration
-          LLM_MODEL=openrouter/google/gemini-2.0-flash-exp:free
+          LLM_MODEL=openrouter/google/gemini-2.0-flash-exp
           LLM_MAX_CHARS=2000000
           OPENROUTER_KEY=${{ secrets.OPENROUTER_KEY }}
 
