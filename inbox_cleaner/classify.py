@@ -1,6 +1,8 @@
 import os
 import sys
 import llm
+from email import message_from_bytes
+from email.message import Message
 
 LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/google/gemini-2.5-flash")
 # Max tokens to send (Gemini 2.5 Flash supports 1,048,576 tokens)
@@ -8,9 +10,43 @@ LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/google/gemini-2.5-flash")
 # Target ~800K tokens to leave headroom for prompt overhead (250K token buffer)
 MAX_CHARS = int(os.getenv("LLM_MAX_CHARS", "1120000"))  # ~800k tokens * 1.4 chars/token
 
+def _extract_text_content(msg: Message) -> str:
+    """Extract only text content from email, excluding attachments."""
+    text_parts: list[str] = []
+
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            content_disposition = part.get("Content-Disposition", "")
+
+            # Skip attachments (identified by Content-Disposition: attachment)
+            if "attachment" in content_disposition:
+                continue
+
+            # Only extract text/plain and text/html parts
+            if content_type in ("text/plain", "text/html"):
+                try:
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        charset = part.get_content_charset() or "utf-8"
+                        text_parts.append(payload.decode(charset, errors="replace"))
+                except Exception:
+                    pass
+    else:
+        # Non-multipart message - just get the payload
+        try:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                charset = msg.get_content_charset() or "utf-8"
+                text_parts.append(payload.decode(charset, errors="replace"))
+        except Exception:
+            pass
+
+    return "\n\n".join(text_parts)
+
 def classify_message(headers_text: str, raw_email: bytes) -> str:
     """
-    Classify email using full content (up to 500K tokens)
+    Classify email using text content only (excluding attachments)
     Uses llm package which supports multiple providers
     """
     subject = ""
@@ -19,8 +55,16 @@ def classify_message(headers_text: str, raw_email: bytes) -> str:
             subject = line.split(":", 1)[1].strip()
             break
 
-    # Decode full email content (up to MAX_CHARS)
-    full_content = raw_email[:MAX_CHARS].decode("utf-8", errors="replace")
+    # Parse email and extract only text content (no attachments)
+    try:
+        msg = message_from_bytes(raw_email)
+        full_content = _extract_text_content(msg)
+    except Exception:
+        # Fallback to raw decoding if parsing fails
+        full_content = raw_email[:MAX_CHARS].decode("utf-8", errors="replace")
+
+    # Truncate to MAX_CHARS after extraction
+    full_content = full_content[:MAX_CHARS]
 
     prompt = (
         "You are an email triage classifier. "
