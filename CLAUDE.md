@@ -9,6 +9,7 @@ Yahoo inbox cleaner that combines Rspamd spam detection with LLM classification 
 ## Development Commands
 
 ### Setup
+
 ```bash
 # Native installation with uv
 uv venv .venv
@@ -26,6 +27,7 @@ cp .env.example .env
 ```
 
 ### Running
+
 ```bash
 # Interactive mode (default)
 uv run inbox-cleaner
@@ -39,6 +41,7 @@ docker compose run --rm cleaner
 ```
 
 ### Database Operations
+
 ```bash
 # Reset last UID to reprocess all emails
 sqlite3 ./data/state.sqlite "UPDATE progress SET last_uid = 0"
@@ -53,6 +56,7 @@ sqlite3 ./data/state.sqlite "SELECT final_action, COUNT(*) FROM email_actions WH
 ## Architecture
 
 ### Core Pipeline (cli.py main loop)
+
 1. **IMAP Connection** → Fetch new emails via `ImapSession`
 2. **Spam Detection** → Send to Rspamd via `check_message()`
 3. **LLM Classification** → Send to OpenRouter via `classify_message()`
@@ -80,7 +84,7 @@ The `decide_action()` function applies signals in priority order:
 
 ### Historical Learning System
 
-**Domain Extraction** (cli.py:60-67): Extracts domain from email addresses using regex (e.g., "amazon.com" from "no-reply@amazon.com")
+**Domain Extraction** (cli.py:60-67): Extracts domain from email addresses using regex (e.g., "amazon.com" from "<no-reply@amazon.com>")
 
 **History Calculation** (cli.py:69-83): `calculate_historical_bias()` computes action percentages when ≥ HISTORY_MIN_SAMPLES past emails exist from the domain
 

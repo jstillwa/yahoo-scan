@@ -37,10 +37,12 @@ This tool automatically processes your Yahoo inbox to identify and move spam/pro
 This tool uses the [llm package](https://llm.datasette.io) which supports multiple providers.
 
 **Option 1: OpenRouter (Recommended)**
+
 1. Sign up at [openrouter.ai](https://openrouter.ai)
 2. Create an API key
 3. Add credits to your account (GPT-4o-mini is very cheap - ~$0.0001 per email)
 4. Set your API key:
+
    ```bash
    llm keys set openrouter
    # Paste your API key when prompted
@@ -48,6 +50,7 @@ This tool uses the [llm package](https://llm.datasette.io) which supports multip
 
 **Option 2: Use environment variable**
 Add to your `.env` file:
+
 ```bash
 OPENROUTER_KEY=sk-or-your-key-here
 ```
@@ -58,11 +61,13 @@ OPENROUTER_KEY=sk-or-your-key-here
 
 1. Clone this repository
 2. Copy the environment template:
+
    ```bash
    cp .env.example .env
    ```
 
 3. Edit `.env` with your credentials (just the required fields):
+
    ```bash
    YAHOO_EMAIL=yourname@yahoo.com
    YAHOO_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
@@ -72,6 +77,7 @@ OPENROUTER_KEY=sk-or-your-key-here
    Note: RSPAMD_URL and SQLITE_PATH are automatically configured for Docker in docker-compose.yml
 
 4. Start the services:
+
    ```bash
    docker compose up --build cleaner
    ```
@@ -79,23 +85,27 @@ OPENROUTER_KEY=sk-or-your-key-here
 ### Option 2: Native Installation with uv
 
 1. Install `uv`:
+
    ```bash
    curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
 
 2. Create and activate a virtual environment:
+
    ```bash
    uv venv .venv
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    ```
 
 3. Install dependencies:
+
    ```bash
    uv sync --no-dev
    uv pip install -e .
    ```
 
 4. Create and configure `.env` file:
+
    ```bash
    cp .env.example .env
    ```
@@ -103,6 +113,7 @@ OPENROUTER_KEY=sk-or-your-key-here
    Edit `.env` with your credentials (just the required fields).
 
 5. Start Rspamd (if not already running):
+
    ```bash
    docker compose up -d rspamd
    ```
@@ -110,12 +121,14 @@ OPENROUTER_KEY=sk-or-your-key-here
 6. Run the cleaner:
 
    **Option A: With activated venv**
+
    ```bash
    source .venv/bin/activate  # Windows: .venv\Scripts\activate
    inbox-cleaner
    ```
 
    **Option B: Using uv run (no activation needed)**
+
    ```bash
    uv run inbox-cleaner
    ```
@@ -125,6 +138,7 @@ OPENROUTER_KEY=sk-or-your-key-here
 7. **Optional: Run in automatic mode**
 
    To automatically apply all recommendations without prompting:
+
    ```bash
    inbox-cleaner --auto
    # or with uv:
@@ -166,12 +180,14 @@ By default, the cleaner runs in **interactive mode**, showing you each email wit
 - **Recommended action**: What the AI thinks should be done
 
 For each email, you can:
+
 - Press **Enter** to accept the recommended action (default)
 - Press **p** to move to Promotional folder
 - Press **s** to move to Spam folder
 - Press **k** to skip (keep in inbox)
 
 Example output:
+
 ```
 ================================================================================
 From: newsletter@example.com
@@ -187,6 +203,7 @@ Action? [P]romotional (default), (s)pam, (k)eep:
 ```
 
 To run in **automatic mode** (no prompts):
+
 - Use the `--auto` flag: `inbox-cleaner --auto`
 - Or set `INTERACTIVE=false` in your `.env` file
 
@@ -198,7 +215,7 @@ The cleaner learns from your past actions to improve future recommendations. Whe
 
 **How it works:**
 
-1. **Domain extraction**: Extracts domain from sender (e.g., "amazon.com" from "no-reply@amazon.com")
+1. **Domain extraction**: Extracts domain from sender (e.g., "amazon.com" from "<no-reply@amazon.com>")
 2. **History lookup**: Queries database for all past actions on emails from this domain
 3. **Pattern detection**: If ≥3 past emails exist, calculates percentages for each action
 4. **Weighted influence**: Applies historical patterns as a "bump" to the recommendation
@@ -207,7 +224,7 @@ The cleaner learns from your past actions to improve future recommendations. Whe
 
 - **Known spam domain**: If you've marked 8/8 emails from "sketchy-deals.com" as spam, future emails from that domain will be strongly biased toward spam
 - **Amazon promotional**: If you've marked 12/15 Amazon emails as promotional, future Amazon emails will lean toward promotional when signals are borderline
-- **Personal contacts**: If you've kept 5/5 emails from "john@company.com", future emails will be more likely to stay in inbox
+- **Personal contacts**: If you've kept 5/5 emails from "<john@company.com>", future emails will be more likely to stay in inbox
 
 **Configuration:**
 
@@ -289,16 +306,19 @@ Deploy to run automatically every hour using GitHub Actions (completely free):
 **Manual Trigger:**
 
 You can also trigger the workflow manually from the Actions tab:
+
 - Go to Actions → Clean Yahoo Inbox → Run workflow
 
 **Monitoring:**
 
 View execution logs in the Actions tab to see:
+
 - How many emails were processed
 - Which actions were taken
 - Any errors or issues
 
 **Notes:**
+
 - Free tier includes 2,000 minutes/month (plenty for hourly runs)
 - Database state is preserved between runs for 90 days
 - Secrets are encrypted and never exposed in logs
@@ -335,6 +355,7 @@ Run periodically using your system's scheduler:
 The tool maintains a complete audit log of all processed emails in the SQLite database:
 
 **Tracked Information:**
+
 - Email metadata (from, subject)
 - Rspamd spam score
 - LLM classification label
@@ -392,14 +413,17 @@ inbox-cleaner/
 ## Troubleshooting
 
 ### "Authentication failed"
+
 - Verify you're using an App Password, not your regular password
 - Check that the email address is correct
 
 ### "Connection refused" to Rspamd
+
 - Ensure rspamd service is running: `docker compose up -d rspamd`
 - Wait a few seconds for rspamd to start
 
 ### "No new emails" but I have unprocessed emails
+
 - Delete `state.sqlite` to reset progress tracking
 - The tool only processes emails with UID > last processed UID
 
@@ -414,16 +438,19 @@ inbox-cleaner/
 ### GitHub Actions deployment issues
 
 **Workflow not running:**
+
 - Check that Actions are enabled in repository Settings → Actions → General
 - Verify the workflow file is at `.github/workflows/clean-inbox.yml`
 - Check the Actions tab for error messages
 
 **Authentication errors:**
+
 - Verify all three secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`, `OPENROUTER_KEY`
 - Use Yahoo app password, not regular password
 - Secret names must match exactly (case-sensitive)
 
 **Database not persisting:**
+
 - Check Actions tab → workflow run → Artifacts section
 - Artifact named "inbox-cleaner-state" should be uploaded after each run
 - First run won't have an artifact (this is normal)
@@ -433,12 +460,14 @@ inbox-cleaner/
 If you need to modify the database (reset progress, clear history, merge local changes, etc.):
 
 1. **Download the current artifact:**
+
    ```bash
    gh run download --name inbox-cleaner-state
    # This downloads state.sqlite to your current directory
    ```
 
 2. **Modify the database:**
+
    ```bash
    # Reset last UID to reprocess all emails
    sqlite3 state.sqlite "UPDATE progress SET last_uid = 0"
@@ -460,6 +489,7 @@ If you need to modify the database (reset progress, clear history, merge local c
    ```
 
 3. **Upload the modified database using the upload workflow:**
+
    ```bash
    # Copy modified database to data directory
    mkdir -p ./data
@@ -496,6 +526,7 @@ sqlite3 state.sqlite "SELECT final_action, COUNT(*) FROM email_actions WHERE fro
 ```
 
 **Rspamd container issues:**
+
 - Check workflow logs for "Rspamd is ready!" message
 - If timeout occurs, rspamd may need more startup time
 - View rspamd logs in the workflow output under "Show logs on failure"
