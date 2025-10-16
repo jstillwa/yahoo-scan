@@ -430,11 +430,12 @@ inbox-cleaner/
 
 **Manually updating the database artifact:**
 
-If you need to modify the database (reset progress, clear history, etc.):
+If you need to modify the database (reset progress, clear history, merge local changes, etc.):
 
 1. **Download the current artifact:**
    ```bash
    gh run download --name inbox-cleaner-state
+   # This downloads state.sqlite to your current directory
    ```
 
 2. **Modify the database:**
@@ -447,32 +448,39 @@ If you need to modify the database (reset progress, clear history, etc.):
 
    # Interactive SQL session for custom queries
    sqlite3 state.sqlite
+
+   # Or merge with local database
+   mkdir -p ./data
+   sqlite3 state.sqlite << 'EOF'
+   ATTACH DATABASE './data/state.sqlite' AS local;
+   INSERT OR IGNORE INTO email_actions
+     SELECT * FROM local.email_actions;
+   DETACH DATABASE local;
+   EOF
    ```
 
-3. **Upload the modified database:**
-
-   Since GitHub doesn't support manual artifact uploads, you have two options:
-
-   **Option A: Use local Docker run (recommended)**
+3. **Upload the modified database using the upload workflow:**
    ```bash
-   # Copy modified database to local data directory
+   # Copy modified database to data directory
    mkdir -p ./data
    cp state.sqlite ./data/state.sqlite
 
-   # Run workflow locally - this will upload the artifact
-   docker compose up -d rspamd
-   docker compose run --rm cleaner inbox-cleaner --auto
+   # Commit temporarily (data/ is in .gitignore, so use -f)
+   git add -f ./data/state.sqlite
+   git commit -m "temp: database for upload"
+   git push
+
+   # Trigger the upload workflow
+   gh workflow run upload-db.yml
+
+   # Wait for completion, then clean up
+   sleep 15  # wait for upload to complete
+   git rm data/state.sqlite
+   git commit -m "cleanup: remove temp database"
+   git push
    ```
 
-   **Option B: Delete old artifacts and start fresh**
-   ```bash
-   # Delete all old artifacts
-   gh api repos/jstillwa/yahoo-scan/actions/artifacts \
-     --jq '.artifacts[] | select(.name == "inbox-cleaner-state") | .id' \
-     | xargs -I {} gh api -X DELETE repos/jstillwa/yahoo-scan/actions/artifacts/{}
-
-   # Next workflow run will start with fresh database
-   ```
+   The `upload-db.yml` workflow uploads `./data/state.sqlite` as the `inbox-cleaner-state` artifact, which the main `clean-inbox.yml` workflow will use on the next run.
 
 **Common database operations:**
 
