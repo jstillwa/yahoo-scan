@@ -15,10 +15,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download previous database state
-        uses: actions/download-artifact@v4
+        uses: dawidd6/action-download-artifact@v6
         with:
           name: inbox-cleaner-state
           path: ./data
+          workflow: clean-inbox.yml
+          workflow_conclusion: success
+          if_no_artifact_found: warn
         continue-on-error: true  # First run won't have artifacts
 
       - name: Create data directory if needed
