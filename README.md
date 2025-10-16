@@ -428,6 +428,65 @@ inbox-cleaner/
 - Artifact named "inbox-cleaner-state" should be uploaded after each run
 - First run won't have an artifact (this is normal)
 
+**Manually updating the database artifact:**
+
+If you need to modify the database (reset progress, clear history, etc.):
+
+1. **Download the current artifact:**
+   ```bash
+   gh run download --name inbox-cleaner-state
+   ```
+
+2. **Modify the database:**
+   ```bash
+   # Reset last UID to reprocess all emails
+   sqlite3 state.sqlite "UPDATE progress SET last_uid = 0"
+
+   # Clear all history
+   sqlite3 state.sqlite "DELETE FROM email_actions"
+
+   # Interactive SQL session for custom queries
+   sqlite3 state.sqlite
+   ```
+
+3. **Upload the modified database:**
+
+   Since GitHub doesn't support manual artifact uploads, you have two options:
+
+   **Option A: Use local Docker run (recommended)**
+   ```bash
+   # Copy modified database to local data directory
+   mkdir -p ./data
+   cp state.sqlite ./data/state.sqlite
+
+   # Run workflow locally - this will upload the artifact
+   docker compose up -d rspamd
+   docker compose run --rm cleaner inbox-cleaner --auto
+   ```
+
+   **Option B: Delete old artifacts and start fresh**
+   ```bash
+   # Delete all old artifacts
+   gh api repos/jstillwa/yahoo-scan/actions/artifacts \
+     --jq '.artifacts[] | select(.name == "inbox-cleaner-state") | .id' \
+     | xargs -I {} gh api -X DELETE repos/jstillwa/yahoo-scan/actions/artifacts/{}
+
+   # Next workflow run will start with fresh database
+   ```
+
+**Common database operations:**
+
+```bash
+# View recent actions
+sqlite3 state.sqlite "SELECT datetime(processed_at), from_addr, subject, final_action FROM email_actions ORDER BY processed_at DESC LIMIT 10"
+
+# Check current progress
+sqlite3 state.sqlite "SELECT * FROM progress"
+
+# View domain history
+sqlite3 state.sqlite "SELECT final_action, COUNT(*) FROM email_actions WHERE from_addr LIKE '%@amazon.com%' GROUP BY final_action"
+```
+
 **Rspamd container issues:**
 - Check workflow logs for "Rspamd is ready!" message
 - If timeout occurs, rspamd may need more startup time
