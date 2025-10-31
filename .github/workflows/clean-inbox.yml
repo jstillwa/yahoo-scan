@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload database state for next run
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: inbox-cleaner-state
           path: ./data/state.sqlite
