@@ -22,9 +22,11 @@ FROM python:3.14-slim
 
 WORKDIR /app
 
-# Copy virtual environment and source code from builder
+# Copy virtual environment and entire project structure from builder
+# (needed for editable installs to work correctly)
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/inbox_cleaner /app/inbox_cleaner
+COPY --from=builder /app/pyproject.toml /app/pyproject.toml
 
 # Set PATH to use venv
 ENV PATH="/app/.venv/bin:${PATH}"
