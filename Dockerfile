@@ -12,19 +12,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project --no-dev
 
-# Copy source and install project
+# Copy source and install project (non-editable for Docker)
 COPY . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --no-editable
 
 # Final slim runtime image
 FROM python:3.14-slim
 
 WORKDIR /app
 
-# Copy virtual environment and source code from builder
+# Copy virtual environment from builder (package installed in site-packages)
 COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/inbox_cleaner /app/inbox_cleaner
 
 # Set PATH to use venv
 ENV PATH="/app/.venv/bin:${PATH}"
