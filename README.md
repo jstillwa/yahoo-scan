@@ -48,12 +48,20 @@ This tool uses the [llm package](https://llm.datasette.io) which supports multip
    # Paste your API key when prompted
    ```
 
-**Option 2: Use environment variable**
+Or use environment variable**
+
 Add to your `.env` file:
 
 ```bash
 OPENROUTER_KEY=sk-or-your-key-here
 ```
+
+**Option 2: Ollama**
+
+1. Set `LLM_MODEL` to your prefered Ollama model. Ex: `LLM_MODEL=llama3.2`
+2. If your Ollama server is located in a different host, set
+   `OLLAMA_API_BASE`. Ex: `OLLAMA_API_BASE=http://192.168.1.1:11434`
+
 
 ## Installation
 

@@ -3,6 +3,10 @@ import sys
 import llm
 from email import message_from_bytes
 from email.message import Message
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 LLM_MODEL = os.getenv("LLM_MODEL", "openrouter/google/gemini-2.5-flash")
 # Max tokens to send (Gemini 2.5 Flash supports 1,048,576 tokens)
@@ -93,6 +97,7 @@ def classify_message(headers_text: str, raw_email: bytes) -> str:
         print("\nOr set the environment variable:", file=sys.stderr)
         print("  export LLM_OPENROUTER_KEY=your-key-here", file=sys.stderr)
         print("\nGet your API key from: https://openrouter.ai/keys", file=sys.stderr)
+        print("\nOr use Ollama for local inference:", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"\nERROR: Failed to classify email: {e}", file=sys.stderr)
