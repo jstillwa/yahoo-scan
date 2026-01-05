@@ -48,7 +48,7 @@ This tool uses the [llm package](https://llm.datasette.io) which supports multip
    # Paste your API key when prompted
    ```
 
-Or use environment variable**
+Or use environment variable
 
 Add to your `.env` file:
 
