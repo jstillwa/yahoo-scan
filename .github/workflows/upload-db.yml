@@ -3,6 +3,10 @@ name: Upload Local Database
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   upload:
     runs-on: ubuntu-latest
