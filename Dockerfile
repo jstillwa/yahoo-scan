@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
 # Final slim runtime image
-FROM python:3.14-slim
+FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 
@@ -33,4 +33,7 @@ VOLUME ["/data"]
 
 # Default command runs the CLI
 # Pass --auto for automatic mode: docker run ... inbox_cleaner --auto
+RUN useradd -r -s /usr/sbin/nologin appuser && mkdir -p /data && chown appuser:appuser /data
+USER appuser
+
 CMD ["inbox_cleaner"]
