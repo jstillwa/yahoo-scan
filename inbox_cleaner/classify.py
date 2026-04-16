@@ -95,8 +95,9 @@ def classify_message(headers_text: str, raw_email: bytes) -> str:
         print("\nGet your API key from: https://openrouter.ai/keys", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
-        print(f"\nERROR: Failed to classify email: {e}", file=sys.stderr)
-        sys.exit(1)
+        print(f"\nWARNING: Failed to classify email: {e}", file=sys.stderr)
+        print("Defaulting to 'normal' classification.", file=sys.stderr)
+        return "normal"
 
     if "spam" in out:
         return "spam"
