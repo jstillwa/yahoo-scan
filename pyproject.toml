@@ -18,6 +18,9 @@ dependencies = [
 [project.scripts]
 inbox_cleaner = "inbox_cleaner.cli:main"
 
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
 [tool.setuptools]
 packages = ["inbox_cleaner"]
 
