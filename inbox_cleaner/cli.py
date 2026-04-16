@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 import sys
 import argparse
 from dotenv import load_dotenv
@@ -29,7 +30,7 @@ INTERACTIVE = os.getenv("INTERACTIVE", "true").lower() in ("true", "1", "yes")
 HISTORY_WEIGHT = float(os.getenv("HISTORY_WEIGHT", "0.3"))
 HISTORY_MIN_SAMPLES = int(os.getenv("HISTORY_MIN_SAMPLES", "3"))
 
-def decode_email_header(header_value):
+def decode_email_header(header_value: str) -> str:
     """Decode email header value (handles encoded headers)"""
     if not header_value:
         return ""
@@ -51,7 +52,7 @@ def decode_email_header(header_value):
             result.append(content)
     return ''.join(result)
 
-def extract_email_info(raw_email: bytes):
+def extract_email_info(raw_email: bytes) -> tuple[str, str]:
     """Extract subject and from fields from raw email"""
     msg = message_from_bytes(raw_email)
     subject = decode_email_header(msg.get('Subject', '(No Subject)'))
@@ -60,14 +61,13 @@ def extract_email_info(raw_email: bytes):
 
 def extract_domain(from_addr: str) -> str:
     """Extract domain from email address (e.g., 'Name <user@example.com>' -> 'example.com')"""
-    import re
     # Handle formats: "Name <email@domain.com>" or "email@domain.com"
     match = re.search(r'[\w\.-]+@([\w\.-]+)', from_addr)
     if match:
         return match.group(1).lower()
     return ""
 
-def calculate_historical_bias(domain_history: dict, min_samples: int = 3):
+def calculate_historical_bias(domain_history: dict[str, int], min_samples: int = 3) -> dict[str, float] | None:
     """Calculate historical action percentages for a domain"""
     if not domain_history:
         return None
@@ -84,56 +84,72 @@ def calculate_historical_bias(domain_history: dict, min_samples: int = 3):
     }
 
 def decide_action(
-    rspamd_result: dict,
+    rspamd_result: dict[str, object],
     llm_label: str,
     score_threshold: float,
     spam_threshold: float = 10.0,
-    domain_history: dict = None,
+    domain_history: dict[str, int] | None = None,
     history_weight: float = 0.3,
     history_min_samples: int = 3,
-):
-    """Decide what action to take based on rspamd, LLM, and historical results"""
-    score = rspamd_result.get("score", 0.0)
+) -> str:
+    """Decide what action to take based on rspamd, LLM, and historical results.
+
+    Priority order:
+    1. Very high-confidence spam (rspamd reject / extreme score) — never overridden
+    2. Strong user history (≥5 samples, ≥80% agreement) — overrides medium signals
+    3. Medium rspamd / LLM signals — promotional or trash
+    4. Moderate history signals — tiebreaker for borderline cases
+    5. Default → keep
+    """
+    score = float(rspamd_result.get("score", 0.0))
     action = (rspamd_result.get("action") or "").lower()
 
-    # Calculate historical bias
     hist_bias = calculate_historical_bias(domain_history, history_min_samples)
 
-    # High confidence spam → trash (history doesn't override this)
-    if score >= spam_threshold or action in ("reject",):
+    # ── 1. Very high-confidence spam — history never overrides ──
+    if action == "reject" or score >= spam_threshold:
         return "trash"
 
-    # LLM says spam → trash (history doesn't override this)
+    # ── 2. Strong user history overrides medium-confidence signals ──
+    if hist_bias and hist_bias["total"] >= max(history_min_samples, 5):
+        # User has consistently kept emails from this domain
+        if hist_bias["skip"] >= 0.8:
+            return "keep"
+        # User has consistently trashed emails from this domain
+        if hist_bias["trash"] >= 0.8 and score >= score_threshold * 0.3:
+            return "trash"
+        # User has consistently marked as promotional
+        if hist_bias["promotional"] >= 0.8:
+            return "promotional"
+
+    # ── 3. Medium-confidence signals ──
     if llm_label == "spam":
         return "trash"
 
-    # Apply historical learning for borderline cases
-    if hist_bias:
-        # If history strongly suggests trash (>60%) and score is above half threshold
-        if hist_bias["trash"] > 0.6 and score >= score_threshold * 0.5:
-            return "trash"
+    # Raise the effective threshold when history leans toward keep
+    effective_score_threshold = score_threshold
+    if hist_bias and hist_bias["skip"] > 0.5:
+        effective_score_threshold = score_threshold * (1.0 + history_weight)
 
-        # If history strongly suggests promotional (>60%) and score is borderline
-        if hist_bias["promotional"] > 0.6 and score >= score_threshold * 0.7:
-            return "promotional"
-
-    # Medium spam score or promotional content → promotional folder
-    if score >= score_threshold or action in ("add header", "rewrite subject", "soft reject", "quarantine"):
+    if score >= effective_score_threshold or action in (
+        "add header", "rewrite subject", "soft reject", "quarantine",
+    ):
         return "promotional"
 
     if llm_label in ("promotional", "marketing", "ads"):
+        # If moderate history says keep, don't blindly trust LLM
+        if hist_bias and hist_bias["skip"] > 0.6:
+            return "keep"
         return "promotional"
 
-    # Apply historical learning for keep vs promotional decision
+    # ── 4. Moderate history tiebreakers for borderline cases ──
     if hist_bias:
-        # If history strongly suggests keep (>70%), raise threshold for promotional
-        if hist_bias["skip"] > 0.7 and score < score_threshold * 0.9:
-            return "keep"
-
-        # If history suggests promotional (>50%), lower threshold slightly
-        if hist_bias["promotional"] > 0.5 and score >= score_threshold * 0.8:
+        if hist_bias["trash"] > 0.6 and score >= score_threshold * 0.5:
+            return "trash"
+        if hist_bias["promotional"] > 0.6 and score >= score_threshold * 0.5:
             return "promotional"
 
+    # ── 5. Default ──
     return "keep"
 
 def get_action_display(action: str) -> str:
@@ -145,7 +161,7 @@ def get_action_display(action: str) -> str:
     else:
         return "KEEP"
 
-def prompt_user(subject: str, from_addr: str, rspamd_score: float, llm_label: str, recommended_action: str, domain_history: dict = None):
+def prompt_user(subject: str, from_addr: str, rspamd_score: float, llm_label: str, recommended_action: str, domain_history: dict[str, int] | None = None) -> str:
     """Show email info and prompt user for action"""
     print("\n" + "="*80)
     print(f"From: {from_addr}")
@@ -195,7 +211,7 @@ def prompt_user(subject: str, from_addr: str, rspamd_score: float, llm_label: st
             print("\nInterrupted by user")
             sys.exit(0)
 
-def main():
+def main() -> None:
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
         description="Yahoo inbox cleaner using Rspamd + LLM classification"
@@ -222,6 +238,9 @@ def main():
 
         uidvalidity = imap.get_uidvalidity(MAILBOX)
         last_uid = store.get_last_uid(uidvalidity)
+
+        if last_uid > 0:
+            print(f"Resuming from UID {last_uid} (progress saved from previous run).")
 
         uids = imap.search_since_uid(last_uid)
         if not uids:
