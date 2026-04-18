@@ -13,6 +13,7 @@ services:
 
   cleaner:
     build: .
+    user: "${UID:-1000}:${GID:-1000}"
     env_file: .env
     environment:
       # Override for Docker networking

@@ -26,7 +26,8 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 
 # Set PATH to use venv
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    HOME=/tmp
 
 # Data dir for sqlite state
 VOLUME ["/data"]
