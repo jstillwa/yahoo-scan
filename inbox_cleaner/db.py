@@ -1,6 +1,6 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import UTC, datetime
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS progress (
@@ -40,7 +40,7 @@ class SeenStore:
         row = cur.fetchone()
         return row[0] if row else 0
 
-    def set_last_uid(self, uidvalidity: str, last_uid: int):
+    def set_last_uid(self, uidvalidity: str, last_uid: int) -> None:
         with self.conn:
             self.conn.execute(
                 "INSERT INTO progress(uidvalidity,last_uid) VALUES(?,?) "
@@ -59,7 +59,7 @@ class SeenStore:
         recommended_action: str,
         final_action: str,
         mode: str,
-    ):
+    ) -> None:
         """Record email processing action to database"""
         with self.conn:
             self.conn.execute(
@@ -81,7 +81,7 @@ class SeenStore:
                 (
                     uidvalidity,
                     uid,
-                    datetime.utcnow().isoformat(),
+                    datetime.now(UTC).isoformat(),
                     from_addr,
                     subject,
                     rspamd_score,
@@ -92,7 +92,7 @@ class SeenStore:
                 ),
             )
 
-    def get_domain_history(self, domain: str) -> dict:
+    def get_domain_history(self, domain: str) -> dict[str, int]:
         """Get historical action counts for a specific domain"""
         if not domain:
             return {}
@@ -104,7 +104,7 @@ class SeenStore:
             WHERE from_addr LIKE ?
             GROUP BY final_action
             """,
-            (f"%@{domain}%",),
+            (f"%@{domain}",),
         )
 
         result = {}

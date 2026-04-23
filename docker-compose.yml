@@ -1,8 +1,8 @@
 services:
   rspamd:
-    image: rspamd/rspamd:latest
+    image: rspamd/rspamd:3.11.1
     ports:
-      - "11333:11333"
+      - "127.0.0.1:11333:11333"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11333/ping"]
@@ -13,6 +13,7 @@ services:
 
   cleaner:
     build: .
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     env_file: .env
     environment:
       # Override for Docker networking

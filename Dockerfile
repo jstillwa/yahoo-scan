@@ -1,5 +1,5 @@
 # Multi-stage build with official uv image
-FROM ghcr.io/astral-sh/uv:0.9.7-python3.14-bookworm AS builder
+FROM ghcr.io/astral-sh/uv:0.9.26-python3.14-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable
 
 # Final slim runtime image
-FROM python:3.14-slim
+FROM python:3.14-slim-bookworm
 
 WORKDIR /app
 
@@ -26,11 +26,15 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 
 # Set PATH to use venv
-ENV PATH="/app/.venv/bin:${PATH}"
+ENV PATH="/app/.venv/bin:${PATH}" \
+    HOME=/tmp
 
 # Data dir for sqlite state
 VOLUME ["/data"]
 
 # Default command runs the CLI
 # Pass --auto for automatic mode: docker run ... inbox_cleaner --auto
+RUN useradd -r -s /usr/sbin/nologin appuser && mkdir -p /data && chown appuser:appuser /data
+USER appuser
+
 CMD ["inbox_cleaner"]

@@ -6,26 +6,40 @@ on:
     - cron: '0 * * * *'
   workflow_dispatch:  # Allow manual triggers
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   clean-inbox:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Download previous database state
-        uses: dawidd6/action-download-artifact@v11
-        with:
-          name: inbox-cleaner-state
-          path: ./data
-          workflow: clean-inbox.yml
-          workflow_conclusion: success
-          if_no_artifact_found: warn
-        continue-on-error: true  # First run won't have artifacts
-
-      - name: Create data directory if needed
-        run: mkdir -p ./data
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ./data
+          run_id=$(gh run list \
+            --workflow=clean-inbox.yml \
+            --status=success \
+            --limit=1 \
+            --json databaseId \
+            --jq '.[0].databaseId')
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" \
+              --name inbox-cleaner-state \
+              --dir ./data \
+              || echo "No previous artifact found; starting fresh."
+          else
+            echo "No previous successful runs; starting fresh."
+          fi
+          # Ensure data dir is owned by the runner user so the containerized
+          # cleaner (running as the same uid) can write to it.
+          sudo chown -R "$(id -u):$(id -g)" ./data
 
       - name: Create .env file from secrets
         run: |
@@ -84,7 +98,8 @@ jobs:
 
       - name: Run inbox cleaner in auto mode
         run: |
-          docker compose run --rm cleaner inbox_cleaner --auto
+          HOST_UID=$(id -u) HOST_GID=$(id -g) \
+            docker compose run --rm cleaner inbox_cleaner --auto
         env:
           YAHOO_EMAIL: ${{ secrets.YAHOO_EMAIL }}
           YAHOO_PASSWORD: ${{ secrets.YAHOO_PASSWORD }}
@@ -104,7 +119,7 @@ jobs:
 
       - name: Upload database state for next run
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: inbox-cleaner-state
           path: ./data/state.sqlite
