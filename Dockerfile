@@ -1,5 +1,5 @@
 # Multi-stage build with official uv image
-FROM ghcr.io/astral-sh/uv:0.9.26-python3.14-bookworm AS builder
+FROM ghcr.io/astral-sh/uv:0.9.30-python3.14-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
