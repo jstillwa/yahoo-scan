@@ -27,4 +27,4 @@ packages = ["inbox_cleaner"]
 
 [tool.uv]
 # Keep installs reproducible
-exclude-newer = "2026-04-15T00:00:00Z"
+exclude-newer = "2026-08-17T00:00:00Z"
