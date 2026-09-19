@@ -1,26 +1,31 @@
 # Inbox Cleaner
 
-Single-user inbox triage (Yahoo IMAP and/or Microsoft 365 Graph) using Rspamd + LLM.
+Single-user inbox triage tool. It scans Yahoo Mail (IMAP) and Microsoft 365
+(Graph) with Rspamd and LLM classification.
 
 ## Overview
 
-This tool automatically processes your inbox(es) to identify and move spam/promotional emails to a designated folder. It scans Yahoo Mail (IMAP) and/or a Microsoft 365 mailbox (Graph) — both in one run when `PROVIDERS=yahoo,m365`. It combines:
+The tool reads each mailbox, classifies each new email, and moves spam and
+promotional email to target folders. It scans Yahoo Mail and Microsoft 365 in
+one run when you set `PROVIDERS=yahoo,m365`. It uses:
 
-- **Rspamd**: Local spam detection engine with scoring
-- **OpenRouter LLM**: AI classification using Gemini 2.5 Flash via OpenRouter
-- **SQLite**: Progress tracking to avoid reprocessing emails (UID cursors for Yahoo, Graph delta tokens for M365 — one shared state file, namespaced per provider)
+- **Rspamd**: local spam scoring
+- **OpenRouter LLM**: email classification (Gemini 2.5 Flash via OpenRouter)
+- **SQLite**: progress tracking. One state file serves both providers. Yahoo
+  uses UID cursors. M365 uses Graph delta tokens.
 
 ## Features
 
-- **Interactive mode**: Review each email with AI recommendations and choose action (promotional/spam/keep)
-- **Historical learning**: Learns from your past actions to improve recommendations over time
-- Zero-framework Python CLI using `uv` for fast, reproducible installs
-- Processes only new emails since last run (tracks UIDVALIDITY)
+- **Interactive mode**: review each email with recommendations, then choose
+  an action (promotional/spam/keep)
+- **Historical learning**: past actions tune later recommendations
+- Zero-framework Python CLI, installed with `uv`
+- Processes only new emails since the last run
 - Combines Rspamd spam scores with LLM classification
-- Moves spam/promotional emails to folders
+- Moves spam and promotional email to folders
 - Preserves read/unread status during processing
 - Complete audit log of all processed emails
-- Cross-platform: Docker or native on Windows/macOS/Linux
+- Cross-platform: Docker, or native on Windows, macOS, and Linux
 
 ## Prerequisites
 
@@ -34,25 +39,28 @@ This tool automatically processes your inbox(es) to identify and move spam/promo
 
 ### Microsoft 365 Setup (optional)
 
-M365 support scans a mailbox via Microsoft Graph with **app-only (client
-credentials) auth** — an unattended daemon login, not your personal login.
-Microsoft does not support app-only IMAP, so Graph is the M365 transport.
+M365 support scans a mailbox through Microsoft Graph with app-only (client
+credentials) auth. This is an unattended daemon login. Microsoft does not
+support app-only IMAP, so Graph is the M365 transport.
 
 1. In [Azure Portal → Microsoft Entra ID → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
    click **New registration**
-2. Name it (e.g. "inbox-cleaner"), leave account type as
-   **Accounts in this organizational directory only**, no redirect URI needed
-3. After creation, note the **Application (client) ID** and
-   **Directory (tenant) ID** → these go in `.env` as `M365_CLIENT_ID` / `M365_TENANT_ID`
-4. **Certificates & secrets → New client secret** → copy the secret **Value**
-   (not the Secret ID) → `M365_CLIENT_SECRET`
-5. **API permissions → Add a permission → Microsoft Graph → Application permissions**:
+2. Name it (for example, "inbox-cleaner"). Leave the account type as
+   **Accounts in this organizational directory only**. No redirect URI is
+   needed.
+3. After creation, note the **Application (client) ID** and the
+   **Directory (tenant) ID**. These go in `.env` as `M365_CLIENT_ID` and
+   `M365_TENANT_ID`.
+4. Go to **Certificates & secrets**, then **New client secret**. Copy the
+   secret **Value** (not the Secret ID). This becomes `M365_CLIENT_SECRET`.
+5. Go to **API permissions**, then **Add a permission**, then **Microsoft
+   Graph**, then **Application permissions**. Add:
    - `Mail.Read`
    - `Mail.ReadWrite`
-6. Click **Grant admin consent for <tenant>** (an Entra admin must do this;
-   without it Graph returns 403)
-7. Set the target mailbox in `M365_MAILBOX` (the user's UPN), optional
-   `M365_MAILBOX_FOLDER` (default `INBOX`)
+6. Click **Grant admin consent for <tenant>**. An Entra admin must do this.
+   Without consent, Graph returns 403.
+7. Set the target mailbox in `M365_MAILBOX` (the user's UPN). Optionally set
+   `M365_MAILBOX_FOLDER` (default `INBOX`).
 8. Add m365 to providers in `.env`:
 
    ```bash
@@ -63,10 +71,10 @@ Microsoft does not support app-only IMAP, so Graph is the M365 transport.
    M365_MAILBOX=user@yourtenant.com
    ```
 
-Note: app-only Graph access to a specific mailbox can alternatively be
-restricted with an **application access policy** in Exchange Online
-(see `ApplicationAccessPolicy` cmdlets) — good practice when the app could
-otherwise read every mailbox in the tenant.
+Note: you can limit app-only Graph access to specific mailboxes. Use an
+**application access policy** in Exchange Online (see the
+`ApplicationAccessPolicy` cmdlets). Do this when the app could otherwise
+read every mailbox in the tenant.
 
 ### LLM Setup
 
@@ -76,7 +84,7 @@ This tool uses the [llm package](https://llm.datasette.io) which supports multip
 
 1. Sign up at [openrouter.ai](https://openrouter.ai)
 2. Create an API key
-3. Add credits to your account (GPT-4o-mini is very cheap - ~$0.0001 per email)
+3. Add credits to your account (about $0.0001 per email)
 4. Set your API key:
 
    ```bash
@@ -84,9 +92,7 @@ This tool uses the [llm package](https://llm.datasette.io) which supports multip
    # Paste your API key when prompted
    ```
 
-Or use environment variable
-
-Add to your `.env` file:
+Or use an environment variable. Add this line to your `.env` file:
 
 ```bash
 OPENROUTER_KEY=sk-or-your-key-here
@@ -94,9 +100,10 @@ OPENROUTER_KEY=sk-or-your-key-here
 
 **Option 2: Ollama**
 
-1. Set `LLM_MODEL` to your prefered Ollama model. Ex: `LLM_MODEL=llama3.2`
-2. If your Ollama server is located in a different host, set
-   `OLLAMA_API_BASE`. Ex: `OLLAMA_API_BASE=http://192.168.1.1:11434`
+1. Set `LLM_MODEL` to your preferred Ollama model. Example:
+   `LLM_MODEL=llama3.2`
+2. If your Ollama server runs on another host, set `OLLAMA_API_BASE`.
+   Example: `OLLAMA_API_BASE=http://192.168.1.1:11434`
 
 
 ## Installation
@@ -122,7 +129,8 @@ OPENROUTER_KEY=sk-or-your-key-here
    [Microsoft 365 Setup](#microsoft-365-setup-optional) and set
    `PROVIDERS=yahoo,m365`.
 
-   Note: RSPAMD_URL and SQLITE_PATH are automatically configured for Docker in docker-compose.yml
+   Note: Docker sets `RSPAMD_URL` and `SQLITE_PATH` automatically in
+   `docker-compose.yml`.
 
 4. Start the services:
 
@@ -183,9 +191,9 @@ OPENROUTER_KEY=sk-or-your-key-here
 
    The app automatically loads variables from the `.env` file.
 
-7. **Optional: Run in automatic mode**
+7. **Optional: run in automatic mode**
 
-   To automatically apply all recommendations without prompting:
+   To apply all recommendations without prompts, run:
 
    ```bash
    inbox-cleaner --auto
@@ -193,7 +201,8 @@ OPENROUTER_KEY=sk-or-your-key-here
    uv run inbox-cleaner --auto
    ```
 
-   This overrides `INTERACTIVE=true` and applies all recommended actions automatically.
+   The `--auto` flag overrides `INTERACTIVE=true` for that run. Interactive
+   mode stays the default.
 
 ## Configuration
 
@@ -227,17 +236,18 @@ All configuration is done via environment variables:
 
 ## Interactive Mode
 
-By default, the cleaner runs in **interactive mode**, showing you each email with:
+By default, the cleaner runs in **interactive mode**. It shows you each email
+with:
 
-- **Email details**: From address and subject line
-- **AI Analysis**: Rspamd spam score and LLM classification
-- **Recommended action**: What the AI thinks should be done
+- **Email details**: sender address and subject line
+- **Analysis**: Rspamd spam score and LLM classification
+- **Recommended action**: the suggested classification
 
 For each email, you can:
 
 - Press **Enter** to accept the recommended action (default)
-- Press **p** to move to Promotional folder
-- Press **s** to move to Spam folder
+- Press **p** to move to the Promotional folder
+- Press **s** to move to the Spam folder
 - Press **k** to skip (keep in inbox)
 
 Example output:
@@ -261,44 +271,50 @@ To run in **automatic mode** (no prompts):
 - Use the `--auto` flag: `inbox-cleaner --auto`
 - Or set `INTERACTIVE=false` in your `.env` file
 
-The `--auto` flag is useful for one-time automatic runs while keeping interactive mode as the default.
-
 ## Historical Learning
 
-The cleaner learns from your past actions to improve future recommendations. When processing an email, it looks up previous actions you've taken on emails from the same domain.
+The cleaner learns from your past actions. For each email, it looks up past
+actions on emails from the same sender domain.
 
 **How it works:**
 
-1. **Domain extraction**: Extracts domain from sender (e.g., "amazon.com" from "<no-reply@amazon.com>")
-2. **History lookup**: Queries database for all past actions on emails from this domain
-3. **Pattern detection**: If ≥3 past emails exist, calculates percentages for each action
-4. **Weighted influence**: Applies historical patterns as a "bump" to the recommendation
+1. **Domain extraction**: extracts the domain from the sender. Example:
+   `amazon.com` from `<no-reply@amazon.com>`
+2. **History lookup**: queries the database for past actions from that domain
+3. **Pattern detection**: with 3 or more past emails, calculates the
+   percentage for each action
+4. **Weighted influence**: applies the pattern as an adjustment to the
+   recommendation
 
 **Example scenarios:**
 
-- **Known spam domain**: If you've marked 8/8 emails from "sketchy-deals.com" as spam, future emails from that domain will be strongly biased toward spam
-- **Amazon promotional**: If you've marked 12/15 Amazon emails as promotional, future Amazon emails will lean toward promotional when signals are borderline
-- **Personal contacts**: If you've kept 5/5 emails from "<john@company.com>", future emails will be more likely to stay in inbox
+- **Known spam domain**: you marked 8 of 8 emails from `sketchy-deals.com`
+  as spam. Future email from that domain leans toward spam.
+- **Amazon promotional**: you marked 12 of 15 Amazon emails as promotional.
+  Future Amazon email leans toward promotional when signals are borderline.
+- **Personal contacts**: you kept 5 of 5 emails from `<john@company.com>`.
+  Future email from that address tends to stay in the inbox.
 
 **Configuration:**
 
-- `HISTORY_WEIGHT` (default: 0.3): Controls influence strength
+- `HISTORY_WEIGHT` (default: `0.3`): influence strength
   - `0.0` = disabled (no historical learning)
   - `0.3` = moderate influence (recommended)
   - `1.0` = strong influence
-- `HISTORY_MIN_SAMPLES` (default: 3): Minimum past emails needed before using history
+- `HISTORY_MIN_SAMPLES` (default: `3`): minimum past emails before the
+  tool uses history
 
 **Important notes:**
 
-- History acts as a "learned preference" for borderline cases
-- Strong signals (high spam scores, explicit LLM classifications) still take precedence
-- History is applied non-deterministically to avoid false positives
-- Interactive mode shows historical percentages in the prompt
+- History acts as a learned preference for borderline cases
+- Strong signals (high spam scores, explicit LLM classifications) take
+  precedence
+- Interactive mode shows the historical percentages in the prompt
 
 ## How It Works
 
 1. **Connect**: Logs into Yahoo via IMAP app password and/or M365 via Graph client-credentials (MSAL)
-2. **Check for new emails**: Yahoo uses SQLite-tracked last UID; M365 uses a Graph delta token (per-folder change feed)
+2. **Check for new emails**: Yahoo tracks the last processed UID in SQLite. M365 uses a Graph delta token, a per-folder change feed
 3. **Spam detection**: Sends each email to Rspamd for scoring
 4. **LLM classification**: Sends headers/body to OpenRouter for categorization
 5. **Decision logic**:
@@ -308,7 +324,7 @@ The cleaner learns from your past actions to improve future recommendations. Whe
    - If LLM classifies as "promotional/marketing/ads" → recommend **PROMOTIONAL**
    - Otherwise → recommend **KEEP** in inbox
 6. **Move emails**: Moves to destination folder (IMAP MOVE/COPY+DELETE, or Graph message move)
-7. **Save progress**: Yahoo updates last UID; M365 updates the delta token
+7. **Save progress**: Yahoo updates the last UID. M365 updates the delta token
 
 ## Command-Line Options
 
@@ -326,38 +342,39 @@ options:
 
 ### GitHub Actions (Recommended for Cloud Deployment)
 
-Deploy to run automatically every hour using GitHub Actions (completely free):
+The workflow runs hourly on GitHub Actions. The free tier covers 2,000
+minutes per month.
 
-**Setup Steps:**
+**Setup steps:**
 
-1. **Fork/push this repository to GitHub**
+1. **Fork or push this repository to GitHub**
 
 2. **Add repository secrets** (Settings → Secrets and variables → Actions):
-   - `YAHOO_EMAIL` - Your Yahoo email address
-   - `YAHOO_PASSWORD` - Your Yahoo app password
-   - `OPENROUTER_KEY` - Your OpenRouter API key
+   - `YAHOO_EMAIL` - your Yahoo email address
+   - `YAHOO_PASSWORD` - your Yahoo app password
+   - `OPENROUTER_KEY` - your OpenRouter API key
 
-   **Optional: also scan an M365 mailbox in the same run** — add:
+   **Optional: scan an M365 mailbox in the same run.** Add:
    - `M365_TENANT_ID` - Entra tenant (directory) ID
-   - `M365_CLIENT_ID` - App registration client ID
-   - `M365_CLIENT_SECRET` - App registration client secret value
-   - `M365_MAILBOX` - Target mailbox UPN (user@tenant.com)
+   - `M365_CLIENT_ID` - app registration client ID
+   - `M365_CLIENT_SECRET` - app registration client secret value
+   - `M365_MAILBOX` - target mailbox UPN (user@tenant.com)
 
-   The workflow writes `PROVIDERS=yahoo,m365` when the M365 secrets are set;
-   with only the Yahoo secrets it scans Yahoo alone. See
+   The workflow writes `PROVIDERS=yahoo,m365` when the M365 secrets are set.
+   Without them, it scans Yahoo only. See
    [Microsoft 365 Setup](#microsoft-365-setup-optional) for the Azure app
-   registration walkthrough.
+   registration steps.
 
-   **Optional: Customize other settings**
+   **Optional: customize other settings**
 
-   By default, the workflow uses these settings (defined in `.github/workflows/clean-inbox.yml`):
-   - LLM Model: `openrouter/google/gemini-2.0-flash-exp:free`
+   The workflow defines these settings in `.github/workflows/clean-inbox.yml`:
+   - LLM model: `openrouter/google/gemini-2.0-flash-exp:free`
    - Spam score threshold: `6.0`
    - Trash score threshold: `7.0`
    - History weight: `0.3`
-   - History min samples: `3`
+   - History minimum samples: `3`
 
-   To customize these, edit the `.env` file creation section in the workflow file
+   To change them, edit the `.env` creation step in the workflow file.
 
 3. **Enable GitHub Actions** in your repository settings
 
@@ -366,9 +383,9 @@ Deploy to run automatically every hour using GitHub Actions (completely free):
    - Runs at minute 0 of every hour
    - Uses Docker Compose (rspamd + cleaner)
    - Runs in `--auto` mode (no prompts)
-   - SQLite database persists between runs via GitHub artifacts
+   - SQLite state persists between runs as a GitHub artifact
 
-**Manual Trigger:**
+**Manual trigger:**
 
 You can also trigger the workflow manually from the Actions tab:
 
@@ -380,14 +397,14 @@ View execution logs in the Actions tab to see:
 
 - How many emails were processed
 - Which actions were taken
-- Any errors or issues
+- Any errors
 
 **Notes:**
 
-- Free tier includes 2,000 minutes/month (plenty for hourly runs)
-- Database state is preserved between runs for 90 days
-- Secrets are encrypted and never exposed in logs
-- All sensitive data stays in repository secrets
+- The free tier includes 2,000 minutes per month, which covers hourly runs
+- Database state is preserved for 90 days
+- Secrets are encrypted and never shown in logs
+- Sensitive data stays in repository secrets
 
 ### Local Scheduling
 
@@ -413,21 +430,23 @@ Run periodically using your system's scheduler:
 6. Arguments: `compose run --rm cleaner --auto`
 7. Start in: `C:\path\to\inbox-cleaner`
 
-**Note:** The `--auto` flag ensures scheduled runs execute automatically without waiting for user input.
+**Note:** The `--auto` flag makes scheduled runs execute without waiting for
+input.
 
 ## Email Processing History
 
-The tool maintains a complete audit log of all processed emails in the SQLite database:
+The tool stores a complete audit log of processed emails in the SQLite
+database:
 
-**Tracked Information:**
+**Tracked information:**
 
-- Email metadata (from, subject)
+- Email metadata (sender, subject)
 - Rspamd spam score
 - LLM classification label
-- Recommended action (what the AI suggested)
-- Final action taken (what actually happened)
+- Recommended action
+- Final action taken
 - Processing mode (auto or interactive)
-- Timestamp of processing
+- Timestamp
 
 **Querying the History:**
 
@@ -450,12 +469,12 @@ sqlite3 ./data/state.sqlite "SELECT final_action, COUNT(*) FROM email_actions WH
 
 ## Notes
 
-- Yahoo does not provide a default "Promotional" folder; the app creates it automatically
-- SQLite stores both progress tracking and complete email processing history
+- Yahoo has no default "Promotional" folder. The app creates it automatically.
+- SQLite stores progress tracking and the email history
 - Email read/unread status is preserved during processing
-- If Rspamd is unavailable, the app will fail (ensure rspamd service is running)
-- LLM classification uses OpenRouter API with minimal prompts to keep costs low
-- The tool uses COPY + DELETE instead of MOVE for broader IMAP compatibility
+- The app fails when Rspamd is unavailable. Ensure the rspamd service runs.
+- LLM classification uses OpenRouter with minimal prompts to keep costs low
+- The IMAP backend falls back to COPY + DELETE when the server lacks MOVE
 
 ## Architecture
 
@@ -481,36 +500,41 @@ inbox-cleaner/
 
 ### "Authentication failed"
 
-- Verify you're using an App Password, not your regular password
+- Verify you use an App Password, not your regular password
 - Check that the email address is correct
 
 ### M365 "access denied" / 403 from Graph
 
-- Admin consent was not granted for the application permissions (step 6 above)
-- `M365_MAILBOX` must be the user's UPN and the app needs `Mail.Read`/`Mail.ReadWrite` **application** permissions (not delegated)
-- Conditional Access or application access policy may restrict the app's mailbox scope
+- Admin consent was not granted for the application permissions (step 6 in
+  the M365 setup)
+- `M365_MAILBOX` must be the user's UPN. The app needs the
+  `Mail.Read` and `Mail.ReadWrite` **application** permissions, not the
+  delegated ones
+- A Conditional Access policy or an application access policy can restrict
+  the mailboxes the app reads
 
 ### M365 token errors
 
-- Check tenant/client IDs and that the client secret hasn't expired
-- Secret **Value** is required, not the Secret ID
+- Check the tenant and client IDs, and that the client secret has not expired
+- The secret **Value** is required, not the Secret ID
 
 ### "Connection refused" to Rspamd
 
-- Ensure rspamd service is running: `docker compose up -d rspamd`
+- Ensure the rspamd service runs: `docker compose up -d rspamd`
 - Wait a few seconds for rspamd to start
 
 ### "No new emails" but I have unprocessed emails
 
 - Delete `state.sqlite` to reset progress tracking
-- The tool only processes emails with UID > last processed UID
+- The tool processes only emails with a UID above the last processed UID
 
 ### LLM classification errors
 
 - Set your OpenRouter API key: `llm keys set openrouter`
 - Or add to `.env`: `OPENROUTER_KEY=sk-or-your-key`
-- Check you have credits in your OpenRouter account
-- Ensure the LLM_MODEL uses the `openrouter/` prefix (e.g., `openrouter/google/gemini-2.5-flash`)
+- Check that your OpenRouter account has credits
+- Ensure `LLM_MODEL` uses the `openrouter/` prefix, for example
+  `openrouter/google/gemini-2.5-flash`
 - List available models: `llm models list`
 
 ### GitHub Actions deployment issues
@@ -523,21 +547,25 @@ inbox-cleaner/
 
 **Authentication errors:**
 
-- Verify all Yahoo secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`, `OPENROUTER_KEY`
-- Use Yahoo app password, not regular password
+- Verify all Yahoo secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`,
+  `OPENROUTER_KEY`
+- Use the Yahoo app password, not the regular password
 - Secret names must match exactly (case-sensitive)
-- For M365, all four secrets must be set: `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_MAILBOX`
-- M365 run shows only `=== YAHOO ===` and no `=== M365 ===`? The M365 secrets are missing — the workflow falls back to Yahoo-only when they are
+- For M365, all four secrets must be set: `M365_TENANT_ID`, `M365_CLIENT_ID`,
+  `M365_CLIENT_SECRET`, `M365_MAILBOX`
+- If the run shows `=== YAHOO ===` but no `=== M365 ===`, the M365 secrets
+  are missing. The workflow scans Yahoo only in that case.
 
 **Database not persisting:**
 
 - Check Actions tab → workflow run → Artifacts section
-- Artifact named "inbox-cleaner-state" should be uploaded after each run
-- First run won't have an artifact (this is normal)
+- The artifact named "inbox-cleaner-state" should be uploaded after each run
+- The first run has no artifact. This is normal.
 
 **Manually updating the database artifact:**
 
-If you need to modify the database (reset progress, clear history, merge local changes, etc.):
+If you need to modify the database (reset progress, clear history, merge
+local changes):
 
 1. **Download the current artifact:**
 
@@ -571,7 +599,7 @@ If you need to modify the database (reset progress, clear history, merge local c
 3. **Upload the modified database using the upload workflow:**
 
    ```bash
-   # Copy modified database to data directory
+   # Copy the modified database to the data directory
    mkdir -p ./data
    cp state.sqlite ./data/state.sqlite
 
@@ -583,14 +611,16 @@ If you need to modify the database (reset progress, clear history, merge local c
    # Trigger the upload workflow
    gh workflow run upload-db.yml
 
-   # Wait for completion, then clean up
-   sleep 15  # wait for upload to complete
+   # Wait for the upload to finish, then clean up
+   sleep 15
    git rm data/state.sqlite
    git commit -m "cleanup: remove temp database"
    git push
    ```
 
-   The `upload-db.yml` workflow uploads `./data/state.sqlite` as the `inbox-cleaner-state` artifact, which the main `clean-inbox.yml` workflow will use on the next run.
+   The `upload-db.yml` workflow uploads `./data/state.sqlite` as the
+   `inbox-cleaner-state` artifact. The main `clean-inbox.yml` workflow
+   downloads it on the next run.
 
 **Common database operations:**
 
@@ -607,8 +637,8 @@ sqlite3 state.sqlite "SELECT final_action, COUNT(*) FROM email_actions WHERE fro
 
 **Rspamd container issues:**
 
-- Check workflow logs for "Rspamd is ready!" message
-- If timeout occurs, rspamd may need more startup time
+- Check the workflow logs for the "Rspamd is ready!" message
+- If a timeout occurs, rspamd may need more startup time
 - View rspamd logs in the workflow output under "Show logs on failure"
 
 ## License
