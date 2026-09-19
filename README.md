@@ -6,8 +6,10 @@ Single-user inbox triage tool. It scans Yahoo Mail (IMAP) and Microsoft 365
 ## Overview
 
 The tool reads each mailbox, classifies each new email, and moves spam and
-promotional email to target folders. It scans Yahoo Mail and Microsoft 365 in
-one run when you set `PROVIDERS=yahoo,m365`. It uses:
+promotional email to target folders. Each provider is optional: the tool
+enables every provider with complete credentials, so Yahoo-only, M365-only,
+and both-in-one-run all work without extra configuration. Set `PROVIDERS`
+explicitly to pin the list. It uses:
 
 - **Rspamd**: local spam scoring
 - **OpenRouter LLM**: email classification (Gemini 2.5 Flash via OpenRouter)
@@ -61,7 +63,7 @@ support app-only IMAP, so Graph is the M365 transport.
    Without consent, Graph returns 403.
 7. Set the target mailbox in `M365_MAILBOX` (the user's UPN). Optionally set
    `M365_MAILBOX_FOLDER` (default `INBOX`).
-8. Add m365 to providers in `.env`:
+8. Add the M365 variables to `.env`:
 
    ```bash
    PROVIDERS=yahoo,m365
@@ -126,8 +128,8 @@ OPENROUTER_KEY=sk-or-your-key-here
    ```
 
    To also scan a Microsoft 365 mailbox, add the `M365_*` variables from
-   [Microsoft 365 Setup](#microsoft-365-setup-optional) and set
-   `PROVIDERS=yahoo,m365`.
+   [Microsoft 365 Setup](#microsoft-365-setup-optional). No other change is
+   needed; the tool enables each provider with complete credentials.
 
    Note: Docker sets `RSPAMD_URL` and `SQLITE_PATH` automatically in
    `docker-compose.yml`.
@@ -210,7 +212,7 @@ All configuration is done via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROVIDERS` | `yahoo` | Comma-separated providers to scan per run: `yahoo`, `m365`, or `yahoo,m365` |
+| `PROVIDERS` | (auto) | Providers to scan per run: `yahoo`, `m365`, or `yahoo,m365`. Unset = enable every provider with complete credentials. |
 | `YAHOO_EMAIL` | (required for yahoo) | Your Yahoo email address |
 | `YAHOO_APP_PASSWORD` | (required for yahoo) | Yahoo app password |
 | `OPENROUTER_KEY` | (required*) | OpenRouter API key (set via `llm keys set openrouter`) |
@@ -360,8 +362,9 @@ minutes per month.
    - `M365_CLIENT_SECRET` - app registration client secret value
    - `M365_MAILBOX` - target mailbox UPN (user@tenant.com)
 
-   The workflow writes `PROVIDERS=yahoo,m365` when the M365 secrets are set.
-   Without them, it scans Yahoo only. See
+   The workflow leaves `PROVIDERS` unset. The app then enables every provider
+   with complete credentials, so setting the four M365 secrets adds M365 to
+   the run; removing them scans Yahoo only. See
    [Microsoft 365 Setup](#microsoft-365-setup-optional) for the Azure app
    registration steps.
 

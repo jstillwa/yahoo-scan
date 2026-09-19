@@ -27,7 +27,7 @@ M365_CLIENT_ID = os.getenv("M365_CLIENT_ID")
 M365_CLIENT_SECRET = os.getenv("M365_CLIENT_SECRET")
 M365_MAILBOX = os.getenv("M365_MAILBOX")
 M365_MAILBOX_FOLDER = os.getenv("M365_MAILBOX_FOLDER", "INBOX")
-PROVIDERS = os.getenv("PROVIDERS", "yahoo")
+PROVIDERS = os.getenv("PROVIDERS")  # unset = auto-detect from credentials
 MAILBOX = os.getenv("MAILBOX", "INBOX")
 DEST_FOLDER = os.getenv("DEST_FOLDER", "Promotional")
 TRASH_FOLDER = os.getenv("TRASH_FOLDER", "Bulk Mail")
@@ -221,9 +221,21 @@ def prompt_user(subject: str, from_addr: str, rspamd_score: float, llm_label: st
             sys.exit(0)
 
 def _build_sessions() -> list[tuple[str, Mailbox]]:
-    """Build one Mailbox session per enabled provider, or exit on bad config."""
+    """Build one Mailbox session per enabled provider, or exit on bad config.
+
+    When PROVIDERS is unset, each provider with complete credentials is
+    enabled (auto-detect). When PROVIDERS is set, it is the authority: a
+    listed provider with missing credentials is a hard error.
+    """
     sessions: list[tuple[str, Mailbox]] = []
-    providers = [p.strip().lower() for p in PROVIDERS.split(",") if p.strip()]
+    if PROVIDERS:
+        providers = [p.strip().lower() for p in PROVIDERS.split(",") if p.strip()]
+    else:
+        providers = []
+        if YAHOO_EMAIL and YAHOO_APP_PASSWORD:
+            providers.append("yahoo")
+        if M365_TENANT_ID and M365_CLIENT_ID and M365_CLIENT_SECRET and M365_MAILBOX:
+            providers.append("m365")
 
     for provider in providers:
         if provider == "yahoo":
@@ -250,6 +262,15 @@ def _build_sessions() -> list[tuple[str, Mailbox]]:
         else:
             print(f"Unknown provider in PROVIDERS: {provider}", file=sys.stderr)
             sys.exit(1)
+    if not sessions:
+        print(
+            "No mailbox provider configured. Set Yahoo credentials "
+            "(YAHOO_EMAIL/YAHOO_APP_PASSWORD) and/or M365 credentials "
+            "(M365_TENANT_ID/M365_CLIENT_ID/M365_CLIENT_SECRET/M365_MAILBOX), "
+            "or set PROVIDERS explicitly.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     return sessions
 
 
@@ -402,9 +423,6 @@ def main() -> None:
 
     store = SeenStore(SQLITE_PATH)
     sessions = _build_sessions()
-    if not sessions:
-        print("No providers configured. Set PROVIDERS=yahoo,m365 in .env.", file=sys.stderr)
-        sys.exit(1)
 
     for provider, session in sessions:
         print(f"\n=== {provider.upper()} ===")

@@ -286,3 +286,58 @@ class TestStableInt:
         )
         rec = store.get_action("yahoo:1", None, uid=5)
         assert rec is not None and rec["message_id"] is None
+
+
+# ── provider auto-detection ─────────────────────────────────────────────
+
+
+class TestProviderAutoDetect:
+    def test_m365_only_without_yahoo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """M365-only config (no Yahoo creds, PROVIDERS unset) builds one session."""
+        monkeypatch.setattr(cli_mod, "PROVIDERS", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_EMAIL", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_APP_PASSWORD", None)
+        monkeypatch.setattr(cli_mod, "M365_TENANT_ID", "t")
+        monkeypatch.setattr(cli_mod, "M365_CLIENT_ID", "c")
+        monkeypatch.setattr(cli_mod, "M365_CLIENT_SECRET", "s")
+        monkeypatch.setattr(cli_mod, "M365_MAILBOX", "user@x.com")
+        sessions = cli_mod._build_sessions()
+        assert [p for p, _ in sessions] == ["m365"]
+
+    def test_yahoo_only_without_m365(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli_mod, "PROVIDERS", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_EMAIL", "a@y.com")
+        monkeypatch.setattr(cli_mod, "YAHOO_APP_PASSWORD", "pw")
+        monkeypatch.setattr(cli_mod, "M365_TENANT_ID", None)
+        sessions = cli_mod._build_sessions()
+        assert [p for p, _ in sessions] == ["yahoo"]
+
+    def test_none_configured_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(cli_mod, "PROVIDERS", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_EMAIL", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_APP_PASSWORD", None)
+        monkeypatch.setattr(cli_mod, "M365_TENANT_ID", None)
+        with pytest.raises(SystemExit):
+            cli_mod._build_sessions()
+
+    def test_explicit_providers_still_authoritative(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Explicit PROVIDERS=m365 with missing M365 creds is a hard error."""
+        monkeypatch.setattr(cli_mod, "PROVIDERS", "m365")
+        monkeypatch.setattr(cli_mod, "M365_TENANT_ID", None)
+        with pytest.raises(SystemExit):
+            cli_mod._build_sessions()
+
+    def test_partial_m365_creds_not_autodetected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """3 of 4 M365 vars set + no Yahoo: nothing runs (not half-configured m365)."""
+        monkeypatch.setattr(cli_mod, "PROVIDERS", None)
+        monkeypatch.setattr(cli_mod, "YAHOO_EMAIL", None)
+        monkeypatch.setattr(cli_mod, "M365_TENANT_ID", "t")
+        monkeypatch.setattr(cli_mod, "M365_CLIENT_ID", "c")
+        monkeypatch.setattr(cli_mod, "M365_CLIENT_SECRET", "s")
+        monkeypatch.setattr(cli_mod, "M365_MAILBOX", None)
+        with pytest.raises(SystemExit):
+            cli_mod._build_sessions()

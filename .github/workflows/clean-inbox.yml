@@ -62,9 +62,9 @@ jobs:
           M365_MAILBOX=${{ secrets.M365_MAILBOX }}
           M365_MAILBOX_FOLDER=INBOX
 
-          # Providers: scan both mailboxes in one run when M365 secrets are set
-          # (falls back to yahoo-only otherwise)
-          PROVIDERS=yahoo${{ secrets.M365_MAILBOX != '' && ',m365' || '' }}
+          # Providers: the app auto-detects from credentials below (each
+          # provider with complete credentials runs; unset env var = auto)
+          # PROVIDERS=yahoo,m365
 
           # Interactive mode (disabled for GitHub Actions)
           INTERACTIVE=false
