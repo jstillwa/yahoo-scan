@@ -66,12 +66,15 @@ support app-only IMAP, so Graph is the M365 transport.
 8. Add the M365 variables to `.env`:
 
    ```bash
-   PROVIDERS=yahoo,m365
    M365_TENANT_ID=your-tenant-guid
    M365_CLIENT_ID=your-app-client-id
    M365_CLIENT_SECRET=your-secret-value
    M365_MAILBOX=user@yourtenant.com
    ```
+
+   No `PROVIDERS` setting is needed. The tool enables M365 when these four
+   variables are set, with or without Yahoo credentials. Set
+   `PROVIDERS=yahoo,m365` only to pin the provider list.
 
 Note: you can limit app-only Graph access to specific mailboxes. Use an
 **application access policy** in Exchange Online (see the
@@ -213,8 +216,8 @@ All configuration is done via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PROVIDERS` | (auto) | Providers to scan per run: `yahoo`, `m365`, or `yahoo,m365`. Unset = enable every provider with complete credentials. |
-| `YAHOO_EMAIL` | (required for yahoo) | Your Yahoo email address |
-| `YAHOO_APP_PASSWORD` | (required for yahoo) | Yahoo app password |
+| `YAHOO_EMAIL` | (required to enable yahoo) | Your Yahoo email address |
+| `YAHOO_APP_PASSWORD` | (required to enable yahoo) | Yahoo app password |
 | `OPENROUTER_KEY` | (required*) | OpenRouter API key (set via `llm keys set openrouter`) |
 | `LLM_MODEL` | `openrouter/google/gemini-2.5-flash` | LLM model to use (any OpenRouter model) |
 | `LLM_MAX_CHARS` | `2000000` | Max characters to send to LLM (~500K tokens, Gemini supports 1M) |
@@ -230,10 +233,10 @@ All configuration is done via environment variables:
 | `RSPAMD_TRASH_SCORE` | `7.0` | Score threshold for spam folder |
 | `HISTORY_WEIGHT` | `0.3` | Historical learning influence (0.0-1.0) |
 | `HISTORY_MIN_SAMPLES` | `3` | Minimum past emails before using history |
-| `M365_TENANT_ID` | (required for m365) | Entra tenant (directory) ID |
-| `M365_CLIENT_ID` | (required for m365) | App registration client ID |
-| `M365_CLIENT_SECRET` | (required for m365) | App registration client secret value |
-| `M365_MAILBOX` | (required for m365) | Target mailbox UPN (user@tenant.com) |
+| `M365_TENANT_ID` | (required to enable m365) | Entra tenant (directory) ID |
+| `M365_CLIENT_ID` | (required to enable m365) | App registration client ID |
+| `M365_CLIENT_SECRET` | (required to enable m365) | App registration client secret value |
+| `M365_MAILBOX` | (required to enable m365) | Target mailbox UPN (user@tenant.com) |
 | `M365_MAILBOX_FOLDER` | `INBOX` | Folder inside the M365 mailbox to scan |
 
 ## Interactive Mode
