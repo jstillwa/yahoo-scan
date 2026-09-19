@@ -5,6 +5,9 @@ MAX_RETRIES = 3
 
 
 class ImapSession:
+    """IMAP client (Yahoo) implementing the Mailbox protocol."""
+
+    name = "yahoo"
     def __init__(self, host: str, port: int, user: str, app_password: str) -> None:
         self.host = host
         self.port = port
@@ -18,6 +21,7 @@ class ImapSession:
         return self
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: object) -> None:
+        # Matches the Mailbox protocol's __exit__ signature
         try:
             if self.conn:
                 self.conn.logout()

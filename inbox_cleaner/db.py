@@ -1,11 +1,12 @@
 import sqlite3
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS progress (
     uidvalidity TEXT PRIMARY KEY,
-    last_uid INTEGER NOT NULL
+    last_uid INTEGER NOT NULL,
+    cursor TEXT
 );
 
 CREATE TABLE IF NOT EXISTS email_actions (
@@ -20,6 +21,7 @@ CREATE TABLE IF NOT EXISTS email_actions (
     recommended_action TEXT NOT NULL,
     final_action TEXT NOT NULL,
     mode TEXT NOT NULL,
+    message_id TEXT,
     UNIQUE(uidvalidity, uid)
 );
 
@@ -32,8 +34,32 @@ class SeenStore:
     def __init__(self, path: str):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(path)
+        self._migrate()
         with self.conn:
             self.conn.executescript(SCHEMA)
+
+    def _migrate(self) -> None:
+        """One-time upgrade of pre-multi-provider databases: add nullable
+        cursor/message_id columns and prefix legacy uidvalidity keys with
+        'yahoo:' so IMAP and Graph progress never collide."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(progress)")}
+        if not cols:
+            return  # fresh DB; SCHEMA creates everything
+        if "cursor" not in cols:
+            self.conn.execute("ALTER TABLE progress ADD COLUMN cursor TEXT")
+        acols = {r[1] for r in self.conn.execute("PRAGMA table_info(email_actions)")}
+        if acols and "message_id" not in acols:
+            self.conn.execute("ALTER TABLE email_actions ADD COLUMN message_id TEXT")
+        self._prefix_legacy_uidvalidity("progress")
+        if acols:
+            self._prefix_legacy_uidvalidity("email_actions")
+        self.conn.commit()
+
+    def _prefix_legacy_uidvalidity(self, table: str) -> None:
+        self.conn.execute(
+            f"UPDATE {table} SET uidvalidity = 'yahoo:' || uidvalidity "
+            "WHERE uidvalidity NOT LIKE '%:%'"
+        )
 
     def get_last_uid(self, uidvalidity: str) -> int:
         cur = self.conn.execute("SELECT last_uid FROM progress WHERE uidvalidity = ?", (uidvalidity,))
@@ -48,6 +74,22 @@ class SeenStore:
                 (uidvalidity, last_uid),
             )
 
+    def get_cursor(self, uidvalidity: str) -> str:
+        """Stored sync cursor (Graph delta token); '' when none."""
+        cur = self.conn.execute(
+            "SELECT cursor FROM progress WHERE uidvalidity = ?", (uidvalidity,)
+        )
+        row = cur.fetchone()
+        return row[0] if row and row[0] else ""
+
+    def set_cursor(self, uidvalidity: str, cursor: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO progress(uidvalidity,last_uid,cursor) VALUES(?,0,?) "
+                "ON CONFLICT(uidvalidity) DO UPDATE SET cursor=excluded.cursor",
+                (uidvalidity, cursor),
+            )
+
     def record_action(
         self,
         uidvalidity: str,
@@ -59,6 +101,7 @@ class SeenStore:
         recommended_action: str,
         final_action: str,
         mode: str,
+        message_id: str | None = None,
     ) -> None:
         """Record email processing action to database"""
         with self.conn:
@@ -66,8 +109,8 @@ class SeenStore:
                 """
                 INSERT INTO email_actions
                 (uidvalidity, uid, processed_at, from_addr, subject, rspamd_score,
-                 llm_label, recommended_action, final_action, mode)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 llm_label, recommended_action, final_action, mode, message_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(uidvalidity, uid) DO UPDATE SET
                     processed_at=excluded.processed_at,
                     from_addr=excluded.from_addr,
@@ -76,7 +119,8 @@ class SeenStore:
                     llm_label=excluded.llm_label,
                     recommended_action=excluded.recommended_action,
                     final_action=excluded.final_action,
-                    mode=excluded.mode
+                    mode=excluded.mode,
+                    message_id=excluded.message_id
                 """,
                 (
                     uidvalidity,
@@ -89,8 +133,29 @@ class SeenStore:
                     recommended_action,
                     final_action,
                     mode,
+                    message_id,
                 ),
             )
+
+    def get_action(
+        self, uidvalidity: str, message_id: str | None, uid: int | None = None
+    ) -> dict[str, object] | None:
+        """Look up one recorded action by Graph message_id or IMAP uid."""
+        if message_id is not None:
+            cur = self.conn.execute(
+                "SELECT * FROM email_actions WHERE uidvalidity = ? AND message_id = ?",
+                (uidvalidity, message_id),
+            )
+        else:
+            cur = self.conn.execute(
+                "SELECT * FROM email_actions WHERE uidvalidity = ? AND uid = ?",
+                (uidvalidity, uid),
+            )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in cur.description]
+        return dict(zip(cols, row))
 
     def get_domain_history(self, domain: str) -> dict[str, int]:
         """Get historical action counts for a specific domain"""

@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 
+import argparse
 import os
 import re
 import sys
-import argparse
-from dotenv import load_dotenv
-from .imap_client import ImapSession
-from .db import SeenStore
-from .rspamd import check_message
-from .classify import classify_message
 from email import message_from_bytes
 from email.header import decode_header
+
+from dotenv import load_dotenv
+
+from .classify import classify_message
+from .db import SeenStore
+from .imap_client import ImapSession
+from .mailbox import Mailbox
+from .rspamd import check_message
 
 # Load .env file from current directory or parent directories
 load_dotenv()
@@ -19,6 +22,12 @@ IMAP_HOST = os.getenv("IMAP_HOST", "imap.mail.yahoo.com")
 IMAP_PORT = int(os.getenv("IMAP_PORT", "993"))
 YAHOO_EMAIL = os.getenv("YAHOO_EMAIL")
 YAHOO_APP_PASSWORD = os.getenv("YAHOO_APP_PASSWORD")
+M365_TENANT_ID = os.getenv("M365_TENANT_ID")
+M365_CLIENT_ID = os.getenv("M365_CLIENT_ID")
+M365_CLIENT_SECRET = os.getenv("M365_CLIENT_SECRET")
+M365_MAILBOX = os.getenv("M365_MAILBOX")
+M365_MAILBOX_FOLDER = os.getenv("M365_MAILBOX_FOLDER", "INBOX")
+PROVIDERS = os.getenv("PROVIDERS", "yahoo")
 MAILBOX = os.getenv("MAILBOX", "INBOX")
 DEST_FOLDER = os.getenv("DEST_FOLDER", "Promotional")
 TRASH_FOLDER = os.getenv("TRASH_FOLDER", "Bulk Mail")
@@ -211,10 +220,175 @@ def prompt_user(subject: str, from_addr: str, rspamd_score: float, llm_label: st
             print("\nInterrupted by user")
             sys.exit(0)
 
+def _build_sessions() -> list[tuple[str, Mailbox]]:
+    """Build one Mailbox session per enabled provider, or exit on bad config."""
+    sessions: list[tuple[str, Mailbox]] = []
+    providers = [p.strip().lower() for p in PROVIDERS.split(",") if p.strip()]
+
+    for provider in providers:
+        if provider == "yahoo":
+            if not (YAHOO_EMAIL and YAHOO_APP_PASSWORD):
+                print(
+                    "PROVIDERS includes yahoo but YAHOO_EMAIL/YAHOO_APP_PASSWORD missing.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            sessions.append(
+                (provider, ImapSession(IMAP_HOST, IMAP_PORT, YAHOO_EMAIL, YAHOO_APP_PASSWORD))
+            )
+        elif provider == "m365":
+            if not (M365_TENANT_ID and M365_CLIENT_ID and M365_CLIENT_SECRET and M365_MAILBOX):
+                print(
+                    "PROVIDERS includes m365 but M365_TENANT_ID/CLIENT_ID/"
+                    "CLIENT_SECRET/M365_MAILBOX missing.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            # Deferred import: msal/token flow not needed for yahoo-only runs
+            from .m365_client import M365Session
+            sessions.append((provider, M365Session(M365_MAILBOX or "")))
+        else:
+            print(f"Unknown provider in PROVIDERS: {provider}", file=sys.stderr)
+            sys.exit(1)
+    return sessions
+
+
+def _prefixed_key(provider: str, uidvalidity: str) -> str:
+    """Namespace a uidvalidity by provider to keep both mailboxes apart."""
+    return uidvalidity if uidvalidity.startswith(f"{provider}:") else f"{provider}:{uidvalidity}"
+
+
+def _stable_int(graph_id: str) -> int:
+    """Deterministic 31-bit int surrogate for a Graph message id (DB uid col)."""
+    import hashlib
+    return int.from_bytes(hashlib.sha256(graph_id.encode("utf-8")).digest()[:4], "big") >> 1
+
+
+def scan_mailbox(
+    store: SeenStore,
+    session: Mailbox,
+    provider: str,
+    mailbox: str,
+    interactive: bool,
+) -> None:
+    """Scan one mailbox via a Mailbox session: triage + move + record.
+
+    Yahoo (IMAP) uses numeric UIDs and search_since_uid; M365 (Graph) uses the
+    delta-token cursor. Both share the rspamd + LLM decision pipeline here.
+    """
+    is_graph = hasattr(session, "search_since_cursor")
+    session.select_mailbox(mailbox)
+    session.ensure_folder(DEST_FOLDER)  # type: ignore[arg-type]
+    session.ensure_folder(TRASH_FOLDER)  # type: ignore[arg-type]
+
+    uidvalidity = _prefixed_key(provider, session.get_uidvalidity(mailbox))
+
+    if is_graph:
+        if store.get_last_uid(uidvalidity) > 0:
+            print("Resuming (progress saved from previous run).")
+        messages, next_cursor = session.search_since_cursor(store.get_cursor(uidvalidity))  # type: ignore[attr-defined]
+        store.set_cursor(uidvalidity, next_cursor)
+        # Skip tombstones; process upserted messages
+        ids: list[str | int] = [m["id"] for m in messages if m["change"] != "deleted"]
+    else:
+        last_uid = store.get_last_uid(uidvalidity)
+        if last_uid > 0:
+            print(f"Resuming from UID {last_uid} (progress saved from previous run).")
+        ids = session.search_since_uid(last_uid)  # type: ignore[assignment]
+
+    if not ids:
+        print("No new emails.")
+        return
+
+    print(f"[{provider}] Processing {len(ids)} email(s)...")
+    if interactive:
+        print("Interactive mode enabled. You will be prompted for each email.")
+    else:
+        print("Auto mode enabled. Applying recommended actions automatically.")
+
+    for mid in ids:
+        if is_graph:
+            raw = session.fetch_message_rfc822(str(mid))  # type: ignore[attr-defined]
+            subject, from_addr = extract_email_info(raw)
+            # classify_message wants header text; the raw RFC822 carries them
+            hdr = raw.decode("utf-8", errors="replace")
+        else:
+            raw = session.fetch_rfc822(int(mid))
+            subject, from_addr = extract_email_info(raw)
+            hdr = session.fetch_headers(int(mid))
+
+        # Extract domain and get historical actions
+        domain = extract_domain(from_addr)
+        domain_history = store.get_domain_history(domain) if domain else {}
+
+        # Get analysis
+        rsp = check_message(RSPAMD_URL, raw)
+        llm = classify_message(hdr, raw)
+        rspamd_score = rsp.get('score', 0.0)
+
+        # Decide recommended action with history
+        recommended = decide_action(
+            rsp,
+            llm,
+            RSPAMD_SPAM_SCORE,
+            RSPAMD_TRASH_SCORE,
+            domain_history=domain_history,
+            history_weight=HISTORY_WEIGHT,
+            history_min_samples=HISTORY_MIN_SAMPLES,
+        )
+
+        # Interactive mode: ask user
+        if interactive:
+            final_action = prompt_user(subject, from_addr, rspamd_score, llm, recommended, domain_history)
+            mode = "interactive"
+        else:
+            final_action = recommended
+            mode = "auto"
+            print(f"\n{subject[:60]}... → {get_action_display(recommended)}", flush=True)
+
+        # Execute action (IMAP takes uids; Graph takes message ids)
+        if final_action == "promotional":
+            _move(session, mid, DEST_FOLDER)
+            print(f"✓ Moved to {DEST_FOLDER}")
+        elif final_action == "trash":
+            _move(session, mid, TRASH_FOLDER)
+            print(f"✓ Moved to {TRASH_FOLDER}")
+        else:  # skip/keep
+            print("✓ Kept in inbox")
+
+        # Record action to database
+        store.record_action(
+            uidvalidity=uidvalidity,
+            uid=mid if isinstance(mid, int) else _stable_int(str(mid)),
+            message_id=None if isinstance(mid, int) else str(mid),
+            from_addr=from_addr,
+            subject=subject,
+            rspamd_score=rspamd_score,
+            llm_label=llm,
+            recommended_action=recommended,
+            final_action=final_action,
+            mode=mode,
+        )
+
+        # Yahoo advances the UID cursor per message; M365 cursor already saved
+        if not is_graph:
+            store.set_last_uid(uidvalidity, int(mid))
+
+    print(f"[{provider}] Done! Processed {len(ids)} email(s).")
+
+
+def _move(session: Mailbox, mid: "str | int", dest: str) -> None:
+    """Move via the provider's native id type (IMAP uid vs Graph message id)."""
+    if hasattr(session, "move_message"):
+        session.move_message(str(mid), dest)  # type: ignore[attr-defined]
+    else:
+        session.move_to_folder(int(mid), dest)
+
+
 def main() -> None:
     # Parse command-line arguments
     parser = argparse.ArgumentParser(
-        description="Yahoo inbox cleaner using Rspamd + LLM classification"
+        description="Inbox cleaner (Yahoo IMAP + M365 Graph) using Rspamd + LLM classification"
     )
     parser.add_argument(
         "--auto",
@@ -226,97 +400,17 @@ def main() -> None:
     # Determine if interactive mode is enabled
     interactive = INTERACTIVE and not args.auto
 
-    if not (YAHOO_EMAIL and YAHOO_APP_PASSWORD):
-        print("Missing YAHOO_EMAIL or YAHOO_APP_PASSWORD env vars.", file=sys.stderr)
+    store = SeenStore(SQLITE_PATH)
+    sessions = _build_sessions()
+    if not sessions:
+        print("No providers configured. Set PROVIDERS=yahoo,m365 in .env.", file=sys.stderr)
         sys.exit(1)
 
-    store = SeenStore(SQLITE_PATH)
-    with ImapSession(IMAP_HOST, IMAP_PORT, YAHOO_EMAIL, YAHOO_APP_PASSWORD) as imap:
-        imap.select_mailbox(MAILBOX)
-        imap.ensure_folder(DEST_FOLDER)
-        imap.ensure_folder(TRASH_FOLDER)
-
-        uidvalidity = imap.get_uidvalidity(MAILBOX)
-        last_uid = store.get_last_uid(uidvalidity)
-
-        if last_uid > 0:
-            print(f"Resuming from UID {last_uid} (progress saved from previous run).")
-
-        uids = imap.search_since_uid(last_uid)
-        if not uids:
-            print("No new emails.")
-            return
-
-        print(f"Processing {len(uids)} email(s)...")
-        if interactive:
-            print("Interactive mode enabled. You will be prompted for each email.")
-        else:
-            print("Auto mode enabled. Applying recommended actions automatically.")
-
-        for uid in uids:
-            raw = imap.fetch_rfc822(uid)
-            hdr = imap.fetch_headers(uid)
-
-            # Extract email info for display
-            subject, from_addr = extract_email_info(raw)
-
-            # Extract domain and get historical actions
-            domain = extract_domain(from_addr)
-            domain_history = store.get_domain_history(domain) if domain else {}
-
-            # Get analysis
-            rsp = check_message(RSPAMD_URL, raw)
-            llm = classify_message(hdr, raw)
-            rspamd_score = rsp.get('score', 0.0)
-
-            # Decide recommended action with history
-            recommended = decide_action(
-                rsp,
-                llm,
-                RSPAMD_SPAM_SCORE,
-                RSPAMD_TRASH_SCORE,
-                domain_history=domain_history,
-                history_weight=HISTORY_WEIGHT,
-                history_min_samples=HISTORY_MIN_SAMPLES,
-            )
-
-            # Interactive mode: ask user
-            if interactive:
-                final_action = prompt_user(subject, from_addr, rspamd_score, llm, recommended, domain_history)
-                mode = "interactive"
-            else:
-                # Auto mode: use recommended action and show what we're doing
-                final_action = recommended
-                mode = "auto"
-                print(f"\n{subject[:60]}... → {get_action_display(recommended)}", flush=True)
-
-            # Execute action
-            if final_action == "promotional":
-                imap.move_to_folder(uid, DEST_FOLDER)
-                print(f"✓ Moved to {DEST_FOLDER}")
-            elif final_action == "trash":
-                imap.move_to_folder(uid, TRASH_FOLDER)
-                print(f"✓ Moved to {TRASH_FOLDER}")
-            else:  # skip/keep
-                print("✓ Kept in inbox")
-
-            # Record action to database
-            store.record_action(
-                uidvalidity=uidvalidity,
-                uid=uid,
-                from_addr=from_addr,
-                subject=subject,
-                rspamd_score=rspamd_score,
-                llm_label=llm,
-                recommended_action=recommended,
-                final_action=final_action,
-                mode=mode,
-            )
-
-            # Always update progress
-            store.set_last_uid(uidvalidity, uid)
-
-        print(f"\nDone! Processed {len(uids)} email(s).")
+    for provider, session in sessions:
+        print(f"\n=== {provider.upper()} ===")
+        with session:
+            mailbox = M365_MAILBOX_FOLDER if provider == "m365" else MAILBOX
+            scan_mailbox(store, session, provider, mailbox, interactive)
 
 if __name__ == "__main__":
     main()

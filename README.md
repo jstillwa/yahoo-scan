@@ -1,6 +1,6 @@
 # Inbox Cleaner
 
-Single-user Yahoo IMAP inbox triage using Rspamd + LLM.
+Single-user inbox triage (Yahoo IMAP and/or Microsoft 365 Graph) using Rspamd + LLM.
 
 ## Overview
 
@@ -31,6 +31,42 @@ This tool automatically processes your Yahoo inbox to identify and move spam/pro
    - Go to Yahoo Account Security settings
    - Generate a new app password for "Mail"
    - Use this password instead of your regular password
+
+### Microsoft 365 Setup (optional)
+
+M365 support scans a mailbox via Microsoft Graph with **app-only (client
+credentials) auth** — an unattended daemon login, not your personal login.
+Microsoft does not support app-only IMAP, so Graph is the M365 transport.
+
+1. In [Azure Portal → Microsoft Entra ID → App registrations](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+   click **New registration**
+2. Name it (e.g. "inbox-cleaner"), leave account type as
+   **Accounts in this organizational directory only**, no redirect URI needed
+3. After creation, note the **Application (client) ID** and
+   **Directory (tenant) ID** → these go in `.env` as `M365_CLIENT_ID` / `M365_TENANT_ID`
+4. **Certificates & secrets → New client secret** → copy the secret **Value**
+   (not the Secret ID) → `M365_CLIENT_SECRET`
+5. **API permissions → Add a permission → Microsoft Graph → Application permissions**:
+   - `Mail.Read`
+   - `Mail.ReadWrite`
+6. Click **Grant admin consent for <tenant>** (an Entra admin must do this;
+   without it Graph returns 403)
+7. Set the target mailbox in `M365_MAILBOX` (the user's UPN), optional
+   `M365_MAILBOX_FOLDER` (default `INBOX`)
+8. Add m365 to providers in `.env`:
+
+   ```bash
+   PROVIDERS=yahoo,m365
+   M365_TENANT_ID=your-tenant-guid
+   M365_CLIENT_ID=your-app-client-id
+   M365_CLIENT_SECRET=your-secret-value
+   M365_MAILBOX=user@yourtenant.com
+   ```
+
+Note: app-only Graph access to a specific mailbox can alternatively be
+restricted with an **application access policy** in Exchange Online
+(see `ApplicationAccessPolicy` cmdlets) — good practice when the app could
+otherwise read every mailbox in the tenant.
 
 ### LLM Setup
 
@@ -161,8 +197,9 @@ All configuration is done via environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `YAHOO_EMAIL` | (required) | Your Yahoo email address |
-| `YAHOO_APP_PASSWORD` | (required) | Yahoo app password |
+| `PROVIDERS` | `yahoo` | Comma-separated providers to scan per run: `yahoo`, `m365`, or `yahoo,m365` |
+| `YAHOO_EMAIL` | (required for yahoo) | Your Yahoo email address |
+| `YAHOO_APP_PASSWORD` | (required for yahoo) | Yahoo app password |
 | `OPENROUTER_KEY` | (required*) | OpenRouter API key (set via `llm keys set openrouter`) |
 | `LLM_MODEL` | `openrouter/google/gemini-2.5-flash` | LLM model to use (any OpenRouter model) |
 | `LLM_MAX_CHARS` | `2000000` | Max characters to send to LLM (~500K tokens, Gemini supports 1M) |
@@ -178,6 +215,11 @@ All configuration is done via environment variables:
 | `RSPAMD_TRASH_SCORE` | `7.0` | Score threshold for spam folder |
 | `HISTORY_WEIGHT` | `0.3` | Historical learning influence (0.0-1.0) |
 | `HISTORY_MIN_SAMPLES` | `3` | Minimum past emails before using history |
+| `M365_TENANT_ID` | (required for m365) | Entra tenant (directory) ID |
+| `M365_CLIENT_ID` | (required for m365) | App registration client ID |
+| `M365_CLIENT_SECRET` | (required for m365) | App registration client secret value |
+| `M365_MAILBOX` | (required for m365) | Target mailbox UPN (user@tenant.com) |
+| `M365_MAILBOX_FOLDER` | `INBOX` | Folder inside the M365 mailbox to scan |
 
 ## Interactive Mode
 
@@ -251,8 +293,8 @@ The cleaner learns from your past actions to improve future recommendations. Whe
 
 ## How It Works
 
-1. **Connect to IMAP**: Logs into Yahoo Mail using app password
-2. **Check for new emails**: Uses SQLite to track last processed UID
+1. **Connect**: Logs into Yahoo via IMAP app password and/or M365 via Graph client-credentials (MSAL)
+2. **Check for new emails**: Yahoo uses SQLite-tracked last UID; M365 uses a Graph delta token (per-folder change feed)
 3. **Spam detection**: Sends each email to Rspamd for scoring
 4. **LLM classification**: Sends headers/body to OpenRouter for categorization
 5. **Decision logic**:
@@ -261,15 +303,15 @@ The cleaner learns from your past actions to improve future recommendations. Whe
    - If Rspamd score >= spam threshold (6.0) → recommend **PROMOTIONAL**
    - If LLM classifies as "promotional/marketing/ads" → recommend **PROMOTIONAL**
    - Otherwise → recommend **KEEP** in inbox
-6. **Move emails**: Copies to destination folder and deletes from inbox
-7. **Save progress**: Updates SQLite with last processed UID
+6. **Move emails**: Moves to destination folder (IMAP MOVE/COPY+DELETE, or Graph message move)
+7. **Save progress**: Yahoo updates last UID; M365 updates the delta token
 
 ## Command-Line Options
 
 ```
 usage: inbox-cleaner [-h] [--auto]
 
-Yahoo inbox cleaner using Rspamd + LLM classification
+Inbox cleaner (Yahoo IMAP + M365 Graph) using Rspamd + LLM classification
 
 options:
   -h, --help  show this help message and exit
@@ -407,9 +449,11 @@ inbox-cleaner/
 ├── pyproject.toml          # uv configuration
 ├── inbox_cleaner/
 │   ├── __init__.py
-│   ├── cli.py              # Main CLI entrypoint
+│   ├── cli.py              # Main CLI entrypoint, provider loop
+│   ├── mailbox.py          # Mailbox protocol (IMAP/Graph shared surface)
 │   ├── db.py               # SQLite progress tracking
-│   ├── imap_client.py      # Yahoo IMAP client
+│   ├── imap_client.py      # Yahoo IMAP client (Mailbox impl)
+│   ├── m365_client.py      # Microsoft 365 Graph client (Mailbox impl)
 │   ├── rspamd.py           # Rspamd HTTP API
 │   └── classify.py         # OpenRouter LLM classification
 ├── Dockerfile              # Container image with uv
@@ -424,6 +468,17 @@ inbox-cleaner/
 
 - Verify you're using an App Password, not your regular password
 - Check that the email address is correct
+
+### M365 "access denied" / 403 from Graph
+
+- Admin consent was not granted for the application permissions (step 6 above)
+- `M365_MAILBOX` must be the user's UPN and the app needs `Mail.Read`/`Mail.ReadWrite` **application** permissions (not delegated)
+- Conditional Access or application access policy may restrict the app's mailbox scope
+
+### M365 token errors
+
+- Check tenant/client IDs and that the client secret hasn't expired
+- Secret **Value** is required, not the Secret ID
 
 ### "Connection refused" to Rspamd
 

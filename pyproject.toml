@@ -14,6 +14,7 @@ dependencies = [
     "llm>=0.27.1",
     "llm-openrouter>=0.5",
     "llm-ollama>=0.6",
+    "msal>=1.30",
 ]
 
 [project.scripts]
