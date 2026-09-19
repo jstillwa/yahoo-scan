@@ -65,7 +65,6 @@ jobs:
           # Providers: scan both mailboxes in one run when M365 secrets are set
           # (falls back to yahoo-only otherwise)
           PROVIDERS=yahoo${{ secrets.M365_MAILBOX != '' && ',m365' || '' }}
-          EOF
 
           # Interactive mode (disabled for GitHub Actions)
           INTERACTIVE=false
