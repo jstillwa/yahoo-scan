@@ -4,11 +4,11 @@ Single-user inbox triage (Yahoo IMAP and/or Microsoft 365 Graph) using Rspamd + 
 
 ## Overview
 
-This tool automatically processes your Yahoo inbox to identify and move spam/promotional emails to a designated folder. It combines:
+This tool automatically processes your inbox(es) to identify and move spam/promotional emails to a designated folder. It scans Yahoo Mail (IMAP) and/or a Microsoft 365 mailbox (Graph) — both in one run when `PROVIDERS=yahoo,m365`. It combines:
 
 - **Rspamd**: Local spam detection engine with scoring
 - **OpenRouter LLM**: AI classification using Gemini 2.5 Flash via OpenRouter
-- **SQLite**: Progress tracking to avoid reprocessing emails
+- **SQLite**: Progress tracking to avoid reprocessing emails (UID cursors for Yahoo, Graph delta tokens for M365 — one shared state file, namespaced per provider)
 
 ## Features
 
@@ -117,6 +117,10 @@ OPENROUTER_KEY=sk-or-your-key-here
    YAHOO_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
    # Note: Set OpenRouter key using: llm keys set openrouter
    ```
+
+   To also scan a Microsoft 365 mailbox, add the `M365_*` variables from
+   [Microsoft 365 Setup](#microsoft-365-setup-optional) and set
+   `PROVIDERS=yahoo,m365`.
 
    Note: RSPAMD_URL and SQLITE_PATH are automatically configured for Docker in docker-compose.yml
 
@@ -333,6 +337,17 @@ Deploy to run automatically every hour using GitHub Actions (completely free):
    - `YAHOO_PASSWORD` - Your Yahoo app password
    - `OPENROUTER_KEY` - Your OpenRouter API key
 
+   **Optional: also scan an M365 mailbox in the same run** — add:
+   - `M365_TENANT_ID` - Entra tenant (directory) ID
+   - `M365_CLIENT_ID` - App registration client ID
+   - `M365_CLIENT_SECRET` - App registration client secret value
+   - `M365_MAILBOX` - Target mailbox UPN (user@tenant.com)
+
+   The workflow writes `PROVIDERS=yahoo,m365` when the M365 secrets are set;
+   with only the Yahoo secrets it scans Yahoo alone. See
+   [Microsoft 365 Setup](#microsoft-365-setup-optional) for the Azure app
+   registration walkthrough.
+
    **Optional: Customize other settings**
 
    By default, the workflow uses these settings (defined in `.github/workflows/clean-inbox.yml`):
@@ -357,7 +372,7 @@ Deploy to run automatically every hour using GitHub Actions (completely free):
 
 You can also trigger the workflow manually from the Actions tab:
 
-- Go to Actions → Clean Yahoo Inbox → Run workflow
+- Go to Actions → Clean Inbox (Yahoo + M365) → Run workflow
 
 **Monitoring:**
 
@@ -508,9 +523,11 @@ inbox-cleaner/
 
 **Authentication errors:**
 
-- Verify all three secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`, `OPENROUTER_KEY`
+- Verify all Yahoo secrets are set: `YAHOO_EMAIL`, `YAHOO_PASSWORD`, `OPENROUTER_KEY`
 - Use Yahoo app password, not regular password
 - Secret names must match exactly (case-sensitive)
+- For M365, all four secrets must be set: `M365_TENANT_ID`, `M365_CLIENT_ID`, `M365_CLIENT_SECRET`, `M365_MAILBOX`
+- M365 run shows only `=== YAHOO ===` and no `=== M365 ===`? The M365 secrets are missing — the workflow falls back to Yahoo-only when they are
 
 **Database not persisting:**
 

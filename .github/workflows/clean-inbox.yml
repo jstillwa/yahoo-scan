@@ -48,8 +48,12 @@ jobs:
           YAHOO_EMAIL=${{ secrets.YAHOO_EMAIL }}
           YAHOO_APP_PASSWORD=${{ secrets.YAHOO_PASSWORD }}
 
-          # Providers: both mailboxes in one run
-          PROVIDERS=yahoo,m365
+          # IMAP settings
+          IMAP_HOST=imap.mail.yahoo.com
+          IMAP_PORT=993
+          MAILBOX=INBOX
+          DEST_FOLDER=Promotional
+          TRASH_FOLDER=Bulk Mail
 
           # Microsoft 365 (Graph, app-only auth)
           M365_TENANT_ID=${{ secrets.M365_TENANT_ID }}
@@ -58,12 +62,10 @@ jobs:
           M365_MAILBOX=${{ secrets.M365_MAILBOX }}
           M365_MAILBOX_FOLDER=INBOX
 
-          # IMAP settings
-          IMAP_HOST=imap.mail.yahoo.com
-          IMAP_PORT=993
-          MAILBOX=INBOX
-          DEST_FOLDER=Promotional
-          TRASH_FOLDER=Bulk Mail
+          # Providers: scan both mailboxes in one run when M365 secrets are set
+          # (falls back to yahoo-only otherwise)
+          PROVIDERS=yahoo${{ secrets.M365_MAILBOX != '' && ',m365' || '' }}
+          EOF
 
           # Interactive mode (disabled for GitHub Actions)
           INTERACTIVE=false
