@@ -1,4 +1,4 @@
-name: Clean Yahoo Inbox
+name: Clean Inbox (Yahoo + M365)
 
 on:
   schedule:
@@ -44,9 +44,19 @@ jobs:
       - name: Create .env file from secrets
         run: |
           cat > .env << EOF
-          # Yahoo Mail credentials (required)
+          # Yahoo Mail credentials
           YAHOO_EMAIL=${{ secrets.YAHOO_EMAIL }}
           YAHOO_APP_PASSWORD=${{ secrets.YAHOO_PASSWORD }}
+
+          # Providers: both mailboxes in one run
+          PROVIDERS=yahoo,m365
+
+          # Microsoft 365 (Graph, app-only auth)
+          M365_TENANT_ID=${{ secrets.M365_TENANT_ID }}
+          M365_CLIENT_ID=${{ secrets.M365_CLIENT_ID }}
+          M365_CLIENT_SECRET=${{ secrets.M365_CLIENT_SECRET }}
+          M365_MAILBOX=${{ secrets.M365_MAILBOX }}
+          M365_MAILBOX_FOLDER=INBOX
 
           # IMAP settings
           IMAP_HOST=imap.mail.yahoo.com
@@ -103,6 +113,7 @@ jobs:
         env:
           YAHOO_EMAIL: ${{ secrets.YAHOO_EMAIL }}
           YAHOO_PASSWORD: ${{ secrets.YAHOO_PASSWORD }}
+          M365_CLIENT_SECRET: ${{ secrets.M365_CLIENT_SECRET }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
 
       - name: Show logs on failure
